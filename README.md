@@ -56,9 +56,20 @@ Four Claude Code hooks in `claude/settings.json`:
 | Hook | Script | Effect |
 |---|---|---|
 | `SessionStart` | `claude-tag-session` | Records `session_id → tmux window` in `~/.claude/tmux-index.jsonl` |
-| `Stop` | `claude-tmux-alert on` | Tab turns green — Claude finished, your turn |
-| `Notification` | `claude-tmux-alert on` | Tab turns green — needs permission |
-| `UserPromptSubmit` | `claude-tmux-alert off` | You replied; clear it |
+| `UserPromptSubmit` | `claude-tmux-alert busy` | Tab turns purple ◐ — Claude is working |
+| `Stop` | `claude-tmux-alert on` | Tab turns green ● — finished, your turn |
+| `Notification` | `claude-tmux-alert on` | Tab turns green ● — needs permission |
+
+### Tab colours
+
+| State | Colour | Contrast on `#1a1b26` | Weight |
+|---|---|---|---|
+| idle | `#565f89` | 2.8:1 | normal |
+| working ◐ | `#bb9af7` | 7.4:1 | normal |
+| your turn ● | `#9ece6a` | 9.4:1 | **bold** |
+
+Salience tracks required action: working never out-shouts the state that
+actually needs you. Cyan (10.0:1) was rejected for inverting that hierarchy.
 
 Every hook resolves `$TMUX_PANE` to a window id, which is what ties a session
 to a specific tab even when you're looking elsewhere. `~/.tmux.conf` renders

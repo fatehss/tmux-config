@@ -2,8 +2,9 @@
 # Flag the tmux window a Claude session lives in, so its tab turns green
 # when Claude wants your attention.
 #
-#   claude-tmux-alert on    mark this window as needing attention
-#   claude-tmux-alert off   clear the mark
+#   claude-tmux-alert on     mark this window as needing attention (green)
+#   claude-tmux-alert busy   mark this window as working (purple)
+#   claude-tmux-alert off    clear both marks
 #
 # Driven by Claude Code hooks (Notification / Stop / UserPromptSubmit), so
 # the colour reflects actual Claude state - not tmux's generic
@@ -29,19 +30,34 @@ action="${1:-on}"
 win="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}' 2>/dev/null)" || exit 0
 [ -n "$win" ] || exit 0
 
+# Is this window the one you're currently looking at?
+watching() {
+  case "$(tmux display-message -p -t "$win" \
+          '#{window_active}:#{session_attached}' 2>/dev/null)" in
+    1:[1-9]*) return 0 ;;
+    *)        return 1 ;;
+  esac
+}
+
 case "$action" in
   off)
     tmux set-option -uw -t "$win" @claude_alert 2>/dev/null
+    tmux set-option -uw -t "$win" @claude_busy  2>/dev/null
+    ;;
+  busy)
+    # Working supersedes needing-you: a new turn started, so whatever the
+    # previous turn wanted has been answered.
+    tmux set-option -uw -t "$win" @claude_alert 2>/dev/null
+    watching && exit 0
+    tmux set-option -w -t "$win" @claude_busy 1 2>/dev/null
     ;;
   on)
+    # No longer working, whatever the outcome.
+    tmux set-option -uw -t "$win" @claude_busy 2>/dev/null
     # Don't alert a window you're already watching: it would light up green
     # and stay green, since the clear-on-select hook never fires for the tab
     # you're already on.
-    state="$(tmux display-message -p -t "$win" \
-             '#{window_active}:#{session_attached}' 2>/dev/null)"
-    case "$state" in
-      1:[1-9]*) exit 0 ;;
-    esac
+    watching && exit 0
     tmux set-option -w -t "$win" @claude_alert 1 2>/dev/null
     ;;
 esac

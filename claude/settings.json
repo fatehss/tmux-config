@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.local/bin/claude-tmux-alert off"
+            "command": "~/.local/bin/claude-tmux-alert busy"
           }
         ]
       }
