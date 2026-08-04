@@ -1,0 +1,156 @@
+#!/bin/bash
+# tmux-claude — launch or resume tmux sessions for Claude Code work.
+#
+# Usage:
+#   tc                # 4 panes, session "claude" (or reattach if exists)
+#   tc 6              # 6 panes
+#   tc 3 mywork       # 3 panes, session "mywork"
+#   tc -r             # pick a session to resume (or auto-attach if only one)
+#   tc -l             # list sessions
+#   tc -k [name]      # kill a session (or pick from list)
+
+set -e
+
+# ─── Help ────────────────────────────────────────────────────
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  cat <<'EOF'
+tc — tmux workspace launcher for Claude Code
+
+USAGE
+  tc                  Create default session (4 panes, named "claude")
+                      or reattach if it already exists
+  tc [name]           Create/reattach session by name (e.g. tc myproject)
+  tc [panes]          Create with N panes (e.g. tc 6)
+  tc [panes] [name]   Create with N panes and custom name (e.g. tc 3 mywork)
+
+FLAGS
+  -r                  Resume — pick a session to reattach
+                      (auto-attaches if only one exists)
+  -l                  List all running sessions
+  -k [name]           Kill a session (interactive picker if no name given)
+  -h, --help          Show this help
+
+INSIDE TMUX (prefix = Ctrl+a)
+  Ctrl+a c            New window (tab)
+  Ctrl+a ,            Rename current window
+  Ctrl+a n / p        Next / previous window
+  Ctrl+a |            Split pane vertically
+  Ctrl+a -            Split pane horizontally
+  Ctrl+a x            Close current pane
+  Ctrl+a z            Zoom/unzoom pane
+  Alt+Arrow           Move between panes
+  Ctrl+a d            Detach (session keeps running)
+
+PANE BORDER / TAB COLORS
+  Blue                Claude is working (CPU active)
+  Green               Claude is idle (waiting for input)
+EOF
+  exit 0
+fi
+
+# ─── Resume: pick a session ─────────────────────────────────
+if [[ "$1" == "-r" ]]; then
+  sessions=$(tmux ls -F '#{session_name}: #{session_windows} windows, #{session_attached} attached' 2>/dev/null) || {
+    echo "No tmux sessions running."
+    exit 0
+  }
+
+  count=$(echo "$sessions" | wc -l | tr -d ' ')
+
+  if [[ "$count" -eq 1 ]]; then
+    name=$(echo "$sessions" | cut -d: -f1)
+    echo "Only one session: $name. Attaching..."
+    exec tmux attach -t "$name"
+  fi
+
+  echo "Sessions:"
+  echo "$sessions" | nl -ba
+  echo ""
+  printf "Pick a number (or q to cancel): "
+  read -r choice
+  [[ "$choice" == "q" ]] && exit 0
+  name=$(echo "$sessions" | sed -n "${choice}p" | cut -d: -f1)
+  if [[ -n "$name" ]]; then
+    exec tmux attach -t "$name"
+  else
+    echo "Invalid choice."
+    exit 1
+  fi
+fi
+
+# ─── List sessions ───────────────────────────────────────────
+if [[ "$1" == "-l" ]]; then
+  tmux ls 2>/dev/null || echo "No tmux sessions running."
+  exit 0
+fi
+
+# ─── Kill a session ──────────────────────────────────────────
+if [[ "$1" == "-k" ]]; then
+  if [[ -n "$2" ]]; then
+    tmux kill-session -t "$2" && echo "Killed session: $2"
+    exit 0
+  fi
+  sessions=$(tmux ls -F '#{session_name}' 2>/dev/null) || {
+    echo "No tmux sessions running."
+    exit 0
+  }
+  echo "Sessions:"
+  echo "$sessions" | nl -ba
+  printf "Kill which? (number or q): "
+  read -r choice
+  [[ "$choice" == "q" ]] && exit 0
+  name=$(echo "$sessions" | sed -n "${choice}p")
+  if [[ -n "$name" ]]; then
+    tmux kill-session -t "$name" && echo "Killed session: $name"
+  else
+    echo "Invalid choice."
+    exit 1
+  fi
+  exit 0
+fi
+
+# ─── Create / attach session ────────────────────────────────
+# If first arg is a number, it's pane count; otherwise it's session name.
+if [[ "$1" =~ ^[0-9]+$ ]]; then
+  PANES="$1"
+  SESSION="${2:-claude}"
+else
+  PANES=4
+  SESSION="${1:-claude}"
+fi
+WORKDIR="$HOME/Work"
+
+# If session already exists, just attach
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  echo "Session '$SESSION' exists. Attaching..."
+  exec tmux attach -t "$SESSION"
+fi
+
+# Create session — window 1 is the cheatsheet
+tmux new-session -d -s "$SESSION" -c "$WORKDIR" -n "keys"
+tmux send-keys -t "$SESSION:keys" "less -R $HOME/.local/share/tmux-cheatsheet.txt" Enter
+
+# Create work window with panes
+tmux new-window -t "$SESSION" -c "$WORKDIR" -n "work"
+
+for ((i=2; i<=PANES; i++)); do
+  if (( i % 2 == 0 )); then
+    tmux split-window -t "$SESSION:work" -h -c "$WORKDIR"
+  else
+    tmux split-window -t "$SESSION:work" -v -c "$WORKDIR"
+  fi
+  tmux select-layout -t "$SESSION:work" tiled
+done
+
+# Final tiled layout for even sizing
+tmux select-layout -t "$SESSION:work" tiled
+tmux select-pane -t "$SESSION:work.1"
+
+# Focus the work window (not cheatsheet)
+tmux select-window -t "$SESSION:work"
+
+# Start the monitor in the background
+nohup "$HOME/.local/bin/tmux-claude-monitor" "$SESSION" >/dev/null 2>&1 &
+
+# Attach
+exec tmux attach -t "$SESSION"

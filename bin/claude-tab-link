@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# Retroactively link Claude sessions to a tmux tab.
+#
+# The SessionStart hook only tags sessions started after it was installed.
+# This backfills: sessions already running, or old ones you want grouped.
+#
+# Usage:
+#   claude-tab-link                     link live Claude sessions found in this tab
+#   claude-tab-link --pick              pick any past session, link it to this tab
+#   claude-tab-link <sid> [<sid>...]    link specific session ids to this tab
+#   claude-tab-link --window "BMT CSA" <sid>    link to a named tab instead
+#   claude-tab-link --list              show current links for this tab
+#
+# Auto-detect works by joining pid -> tty -> tmux pane, the same way
+# tmux-claude-session-manager does. Sessions with no controlling tty
+# (detached or headless) are skipped: they belong to no tab.
+
+set -uo pipefail
+
+INDEX="${CLAUDE_TMUX_INDEX:-$HOME/.claude/tmux-index.jsonl}"
+PROJECTS="$HOME/.claude/projects"
+
+die() { echo "claude-tab-link: $*" >&2; exit 1; }
+
+command -v jq >/dev/null || die "jq not found"
+
+mode="auto"; want_win=""; sids=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --pick)   mode="pick"; shift ;;
+    --list)   mode="list"; shift ;;
+    --window) want_win="${2:-}"; shift 2 ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*)       die "unknown flag: $1" ;;
+    *)        sids+=("$1"); mode="explicit"; shift ;;
+  esac
+done
+
+# ── resolve the target window ─────────────────────────────────────────
+if [ -n "$want_win" ]; then
+  meta="$(tmux list-windows -a -F '#{window_id}<|>#{window_name}' 2>/dev/null \
+          | awk -v w="$want_win" -F'<\\|>' '$1==w || $2==w {print; exit}')"
+  [ -n "$meta" ] || die "no tmux window matching '$want_win'"
+else
+  [ -n "${TMUX_PANE:-}" ] || die "not inside tmux (use --window NAME)"
+  meta="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}<|>#{window_name}' 2>/dev/null)"
+fi
+win_id="${meta%%<|>*}"
+win_name="${meta#*<|>}"
+
+# ── transcript path for a session id ──────────────────────────────────
+transcript_of() {
+  local sid="$1" f
+  f="$(ls -1 "$PROJECTS"/*/"$sid".jsonl 2>/dev/null | head -1)"
+  printf '%s' "$f"
+}
+
+title_of() {
+  local t="$1"
+  [ -f "$t" ] || return
+  grep -h '"type":"custom-title"' "$t" 2>/dev/null | tail -1 \
+    | jq -r '.customTitle // empty' 2>/dev/null
+}
+
+# cwd is recoverable from the project directory name, but that mangling is
+# lossy (both '/' and '-' become '-'). Prefer the cwd recorded in the
+# transcript itself; fall back to the live agent list.
+cwd_of() {
+  local sid="$1" t="$2" c
+  c="$(grep -h -m1 '"cwd":' "$t" 2>/dev/null | jq -r '.cwd // empty' 2>/dev/null)"
+  [ -n "$c" ] || c="$(claude agents --json 2>/dev/null \
+        | jq -r --arg s "$sid" '.[]|select(.sessionId==$s)|.cwd' 2>/dev/null | head -1)"
+  printf '%s' "$c"
+}
+
+link_one() {
+  local sid="$1" t c
+  t="$(transcript_of "$sid")"
+  [ -n "$t" ] || { echo "  ✗ $sid — no transcript found" >&2; return 1; }
+  c="$(cwd_of "$sid" "$t")"
+  [ -n "$c" ] || { echo "  ✗ $sid — could not determine cwd" >&2; return 1; }
+
+  mkdir -p "$(dirname "$INDEX")"
+  jq -nc --arg sid "$sid" --arg cwd "$c" --arg tpath "$t" \
+         --arg win_id "$win_id" --arg win_name "$win_name" \
+         --arg tsess "$(tmux display-message -p '#{session_name}' 2>/dev/null)" \
+         --arg ts "$(date +%s)" \
+    '{session_id:$sid, cwd:$cwd, transcript:$tpath, source:"link",
+      win_id:$win_id, win_name:$win_name, tmux_session:$tsess, ts:($ts|tonumber)}' \
+    >> "$INDEX"
+
+  local title; title="$(title_of "$t")"
+  echo "  ✓ ${title:-$sid}"
+  echo "      ${c/#$HOME/~}  ·  ${sid:0:8}"
+}
+
+case "$mode" in
+list)
+  [ -s "$INDEX" ] || die "index is empty"
+  echo "[$win_name] linked sessions:"
+  jq -rs --arg id "$win_id" --arg n "$win_name" '
+      group_by(.session_id) | map(max_by(.ts))
+      | map(select(.win_id==$id or .win_name==$n)) | .[]
+      | "  \(.session_id[0:8])  \(.cwd)"' "$INDEX" 2>/dev/null
+  ;;
+
+explicit)
+  echo "linking to tab [$win_name]:"
+  rc=0; for s in "${sids[@]}"; do link_one "$s" || rc=1; done; exit $rc
+  ;;
+
+pick)
+  command -v fzf >/dev/null || die "fzf not found"
+  rows=""
+  while IFS= read -r t; do
+    sid="$(basename "$t" .jsonl)"
+    title="$(title_of "$t")"; [ -n "$title" ] || title="(untitled)"
+    rows+="$(stat -f %m "$t" 2>/dev/null)"$'\t'"$sid"$'\t'"$(printf '%-58s %s' \
+            "${title:0:58}" "$(dirname "${t/#$HOME/~}" | sed 's|.*/||')")"$'\n'
+  done < <(ls -t "$PROJECTS"/*/*.jsonl 2>/dev/null | head -100)
+  [ -n "$rows" ] || die "no transcripts found"
+
+  sel="$(printf '%s' "$rows" | sort -rn -k1,1 | cut -f2- \
+        | fzf --ansi --with-nth=2.. --delimiter='\t' \
+              --height=80% --layout=reverse --border=rounded \
+              --header="link a session to tab [$win_name]  ·  enter to link" \
+              --preview="$HOME/.local/bin/claude-tab-pick --preview {1} 2>/dev/null || true" \
+              --preview-window='down,40%,border-top,wrap')"
+  [ -n "$sel" ] || exit 130
+  echo "linking to tab [$win_name]:"
+  link_one "$(printf '%s' "$sel" | cut -f1)"
+  ;;
+
+auto)
+  # Live Claude processes whose controlling tty is a pane in this window.
+  panes="$(tmux list-panes -t "$win_id" -F '#{pane_tty}' 2>/dev/null)"
+  [ -n "$panes" ] || die "no panes in window $win_id"
+
+  found=0
+  while read -r pid sid; do
+    [ -n "$pid" ] || continue
+    tty="$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')"
+    case "$tty" in ''|'??') continue ;; esac      # no tty -> belongs to no tab
+    printf '%s\n' "$panes" | grep -qx "/dev/$tty" || continue
+    grep -qF "\"session_id\":\"$sid\"" "$INDEX" 2>/dev/null && {
+      # already linked somewhere; re-link only if it's a different tab
+      cur="$(grep -F "\"session_id\":\"$sid\"" "$INDEX" | tail -1 | jq -r '.win_id')"
+      [ "$cur" = "$win_id" ] && { echo "  · already linked: ${sid:0:8}"; found=1; continue; }
+    }
+    [ "$found" = 0 ] && echo "linking to tab [$win_name]:"
+    link_one "$sid" && found=1
+  done < <(claude agents --json 2>/dev/null | jq -r '.[]|"\(.pid) \(.sessionId)"' 2>/dev/null)
+
+  [ "$found" = 1 ] || die "no live Claude sessions found in tab [$win_name] (try --pick)"
+  ;;
+esac

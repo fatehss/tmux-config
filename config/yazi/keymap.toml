@@ -1,0 +1,5 @@
+[mgr]
+prepend_keymap = [
+  { on = "o", run = 'shell "open %s" --confirm', desc = "Open in Finder" },
+  { on = "R", run = 'shell "realpath %s | pbcopy" --confirm', desc = "Copy path to clipboard" },
+]

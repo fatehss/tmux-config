@@ -1,0 +1,13 @@
+# install.sh backups
+*.bak-*
+*.bak
+
+# Never track: contains client names, teammates, and engagement detail.
+# Keep the real file at ~/.claude/CLAUDE.md only. See claude/CLAUDE.md.template.
+claude/CLAUDE.md
+
+# Local-only credentials referenced by .zshrc at runtime
+.cli-proxy-api/
+
+# machine-local shell config (client paths, local proxies, absolute paths)
+home/.zshrc.local

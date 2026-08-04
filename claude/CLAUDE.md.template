@@ -1,0 +1,28 @@
+# Global Claude Code Instructions (template)
+
+Redacted skeleton of ~/.claude/CLAUDE.md. The real file is intentionally
+untracked: it names clients, colleagues, and live engagements.
+
+Copy to ~/.claude/CLAUDE.md and fill in.
+
+## About Me
+**Name:** <your name>
+**Company:** <company>
+**Role:** <role>
+
+## Project Directory Map
+| Path | Description |
+|------|-------------|
+| `~/Work/<project>/` | <what it is> |
+
+## Project Management
+**Tool:** <Linear/Jira/...>
+**Workspace prefix:** <ABC>
+
+### Branch Naming Convention
+```
+<you>/<ticket>-<short-kebab-description>
+```
+
+## Critical Operational Rules
+<house rules: agent teams, client boundaries, dependency policy, ...>

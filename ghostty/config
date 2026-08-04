@@ -1,0 +1,100 @@
+# This is the configuration file for Ghostty.
+#
+# This template file has been automatically created at the following
+# path since Ghostty couldn't find any existing config files on your system:
+#
+#   /Users/fatehss/Library/Application Support/com.mitchellh.ghostty/config
+#
+# The template does not set any default options, since Ghostty ships
+# with sensible defaults for all options. Users should only need to set
+# options that they want to change from the default.
+#
+# Run `ghostty +show-config --default --docs` to view a list of
+# all available config options and their default values.
+#
+# Additionally, each config option is also explained in detail
+# on Ghostty's website, at https://ghostty.org/docs/config.
+#
+# Ghostty can reload the configuration while running by using the menu
+# options or the bound key (default: Command + Shift + comma on macOS and
+# Control + Shift + comma on other platforms). Not all config options can be
+# reloaded while running; some only apply to new windows and others may require
+# a full restart to take effect.
+
+# Config syntax crash course
+# ==========================
+# # The config file consists of simple key-value pairs,
+# # separated by equals signs.
+# font-family = Iosevka
+# window-padding-x = 2
+#
+# # Spacing around the equals sign does not matter.
+# # All of these are identical:
+# key=value
+# key= value
+# key =value
+# key = value
+#
+# # Any line beginning with a # is a comment. It's not possible to put
+# # a comment after a config option, since it would be interpreted as a
+# # part of the value. For example, this will have a value of "#123abc":
+# background = #123abc
+#
+# # Empty values are used to reset config keys to default.
+# key =
+#
+# # Some config options have unique syntaxes for their value,
+# # which is explained in the docs for that config option.
+# # Just for example:
+# resize-overlay-duration = 4s 200ms
+keybind = shift+enter=text:\n\r
+
+desktop-notifications = true
+
+cursor-style = block
+
+# Move cursor to mouse position on click
+# macOS: Option + Click | Linux: Alt + Click
+cursor-click-to-move = true
+
+# Automatically copy selected text to system clipboard
+copy-on-select = clipboard
+
+macos-titlebar-style = tabs
+
+scrollback-limit = 500000000
+
+# ── Homebrew (red) ────────────────────────────────────────────────
+# Terminal.app's Homebrew profile with the hue rotated green -> red.
+# Pure red at Homebrew's saturation (#FE1414) only reaches 5.3:1 on black
+# and fringes badly, so this desaturates to coral: 7.5:1, still clearly red.
+# Accents use red's complement (cyan) so selection stays legible.
+background = #000000
+foreground = #FF6B5C
+
+# Homebrew leaves bold the same color as normal text, which is
+# Ghostty's default - no `bold-color` needed.
+cursor-color = #FF6B5C
+cursor-text = #1A0806
+
+selection-background = #16505C
+selection-foreground = #FFFFFF
+
+# ANSI palette: Apple Terminal's defaults, warmed toward red.
+# Slots 2/10 stay green so `git diff`, `ls`, and test output keep meaning.
+palette = 0=#000000
+palette = 1=#CC1A14
+palette = 2=#00A600
+palette = 3=#B26A00
+palette = 4=#4C7DE0
+palette = 5=#B200B2
+palette = 6=#00A6B2
+palette = 7=#BFBFBF
+palette = 8=#666666
+palette = 9=#FF3B30
+palette = 10=#00D900
+palette = 11=#E5A000
+palette = 12=#7AA2F7
+palette = 13=#E500E5
+palette = 14=#00E5E5
+palette = 15=#E5E5E5

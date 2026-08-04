@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Flag the tmux window a Claude session lives in, so its tab turns green
+# when Claude wants your attention.
+#
+#   claude-tmux-alert on    mark this window as needing attention
+#   claude-tmux-alert off   clear the mark
+#
+# Driven by Claude Code hooks (Notification / Stop / UserPromptSubmit), so
+# the colour reflects actual Claude state - not tmux's generic
+# monitor-activity, which fires on any output at all.
+#
+# The mark is a window-level user option, @claude_alert. The status bar
+# reads it via #{?@claude_alert,...} and ~/.tmux.conf clears it with an
+# after-select-window hook when you visit the tab.
+#
+# Contract: always exit 0 and print nothing. A hook that fails or writes to
+# stdout can interfere with the session.
+
+set -uo pipefail
+
+[ -n "${TMUX_PANE:-}" ] || exit 0
+command -v tmux >/dev/null || exit 0
+
+action="${1:-on}"
+
+# Resolve the pane to its window id up front; the pane may belong to a
+# window that isn't currently selected, which is exactly the case we care
+# about (Claude finishing work in a tab you're not looking at).
+win="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}' 2>/dev/null)" || exit 0
+[ -n "$win" ] || exit 0
+
+case "$action" in
+  off)
+    tmux set-option -uw -t "$win" @claude_alert 2>/dev/null
+    ;;
+  on)
+    # Don't alert a window you're already watching: it would light up green
+    # and stay green, since the clear-on-select hook never fires for the tab
+    # you're already on.
+    state="$(tmux display-message -p -t "$win" \
+             '#{window_active}:#{session_attached}' 2>/dev/null)"
+    case "$state" in
+      1:[1-9]*) exit 0 ;;
+    esac
+    tmux set-option -w -t "$win" @claude_alert 1 2>/dev/null
+    ;;
+esac
+
+exit 0

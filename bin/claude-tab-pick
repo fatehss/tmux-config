@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# Pick a Claude session belonging to the current tmux window.
+#
+# Prints "<cwd>\t<session_id>" for the chosen session, or nothing if the
+# user cancelled / there was nothing to pick. The `lc` shell function
+# consumes that and does the cd + resume, because only a shell function
+# can change the directory of your interactive shell.
+#
+# Usage:
+#   claude-tab-pick            pick a session for the current window
+#   claude-tab-pick --all      pick from every window
+#   claude-tab-pick --preview <session_id>   (internal, used by fzf)
+
+set -uo pipefail
+
+INDEX="${CLAUDE_TMUX_INDEX:-$HOME/.claude/tmux-index.jsonl}"
+
+# ── preview pane ──────────────────────────────────────────────────────
+# Called by fzf for the highlighted row. Shows where the session lives and
+# the last thing you said to it, which is usually enough to recognise it.
+if [ "${1:-}" = "--preview" ]; then
+  sid="${2:-}"
+  rec="$(grep -F "\"session_id\":\"$sid\"" "$INDEX" 2>/dev/null | tail -1)"
+  [ -n "$rec" ] || exit 0
+  cwd="$(printf '%s' "$rec" | jq -r '.cwd')"
+  tpath="$(printf '%s' "$rec" | jq -r '.transcript')"
+  tab="$(printf '%s' "$rec" | jq -r '.win_name')"
+
+  printf '\033[1mtab\033[0m   %s\n' "$tab"
+  printf '\033[1mdir\033[0m   %s\n' "${cwd/#$HOME/~}"
+  printf '\033[1mid\033[0m    %s\n\n' "$sid"
+
+  [ -f "$tpath" ] || { echo "(transcript missing)"; exit 0; }
+
+  printf '\033[1mrecent prompts\033[0m\n'
+  # User turns are stored as type:"user" with a string content field.
+  grep -h '"type":"user"' "$tpath" 2>/dev/null \
+    | jq -r 'try (.message.content
+              | if type=="string" then . else (.[]?|select(.type=="text").text) end)
+             catch empty' 2>/dev/null \
+    | grep -v '^\s*$' | tail -6 | cut -c1-220 | sed 's/^/  › /'
+  exit 0
+fi
+
+command -v jq   >/dev/null || { echo "lc: jq not found" >&2; exit 1; }
+[ -n "${TMUX_PANE:-}" ] || { echo "lc: not inside tmux" >&2; exit 1; }
+[ -s "$INDEX" ] || { echo "lc: no sessions recorded yet (index is empty)" >&2; exit 1; }
+
+scope_all=0
+[ "${1:-}" = "--all" ] && scope_all=1
+
+meta="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}<|>#{window_name}' 2>/dev/null)"
+cur_id="${meta%%<|>*}"
+cur_name="${meta#*<|>}"
+
+# ── live sessions ─────────────────────────────────────────────────────
+# `claude agents --json` only knows about running processes. Used purely to
+# decorate rows with a status dot; absence here means "closed", not "gone".
+live="$(claude agents --json 2>/dev/null | jq -r '.[]?|.sessionId' 2>/dev/null || true)"
+
+# ── select + dedupe ───────────────────────────────────────────────────
+# Match on window id OR window name: the id is exact while this tmux server
+# lives, the name survives a server restart. Newest record per session_id
+# wins, so re-tagging (resuming in another tab) takes effect.
+rows="$(jq -rs --arg id "$cur_id" --arg name "$cur_name" --argjson all "$scope_all" '
+    group_by(.session_id)
+    | map(max_by(.ts))
+    | map(select($all == 1 or .win_id == $id or .win_name == $name))
+    | .[]
+    | [.session_id, .cwd, .transcript, .win_name] | @tsv
+  ' "$INDEX" 2>/dev/null)"
+
+[ -n "$rows" ] || {
+  if [ "$scope_all" = 1 ]; then echo "lc: no sessions recorded yet" >&2
+  else echo "lc: no sessions recorded for tab '$cur_name' (try: lc -a)" >&2; fi
+  exit 1
+}
+
+now="$(date +%s)"
+menu=""
+while IFS=$'\t' read -r sid cwd tpath tab; do
+  [ -n "$sid" ] || continue
+  [ -f "$tpath" ] || continue          # transcript deleted; not resumable
+
+  # Claude's own generated title, if it has one yet.
+  title="$(grep -h '"type":"custom-title"' "$tpath" 2>/dev/null \
+           | tail -1 | jq -r '.customTitle // empty' 2>/dev/null)"
+  [ -n "$title" ] || title="(untitled) $(basename "$cwd")"
+
+  mtime="$(stat -f %m "$tpath" 2>/dev/null || echo "$now")"
+  age=$(( (now - mtime) / 60 ))
+  if   [ "$age" -lt 60 ];   then ago="${age}m"
+  elif [ "$age" -lt 1440 ]; then ago="$((age/60))h"
+  else                           ago="$((age/1440))d"; fi
+
+  case "$live" in *"$sid"*) dot=$'\033[32m●\033[0m' ;; *) dot=$'\033[90m○\033[0m' ;; esac
+
+  if [ "$scope_all" = 1 ]; then
+    label="$(printf '%s \033[36m[%s]\033[0m %-52s \033[90m%4s  %s\033[0m' \
+             "$dot" "$tab" "${title:0:52}" "$ago" "${cwd/#$HOME/~}")"
+  else
+    label="$(printf '%s %-56s \033[90m%4s  %s\033[0m' \
+             "$dot" "${title:0:56}" "$ago" "${cwd/#$HOME/~}")"
+  fi
+  menu+="$mtime"$'\t'"$sid"$'\t'"$cwd"$'\t'"$label"$'\n'
+done <<< "$rows"
+
+[ -n "$menu" ] || { echo "lc: no resumable sessions (transcripts missing)" >&2; exit 1; }
+
+# Most recently active first.
+menu="$(printf '%s' "$menu" | sort -rn -k1,1)"
+count="$(printf '%s\n' "$menu" | grep -c . )"
+
+if [ "$scope_all" = 1 ]; then header="all tabs · $count sessions"
+else                          header="[$cur_name] · $count sessions"; fi
+
+sel="$(printf '%s\n' "$menu" | cut -f2- \
+  | fzf --ansi --with-nth=3.. --delimiter='\t' \
+        --height=80% --layout=reverse --border=rounded \
+        --header="$header  ·  ● live  ○ closed  ·  enter resumes" \
+        --preview="$0 --preview {1}" \
+        --preview-window='down,45%,border-top,wrap')"
+
+[ -n "$sel" ] || exit 130            # cancelled
+
+printf '%s\t%s\n' "$(printf '%s' "$sel" | cut -f2)" "$(printf '%s' "$sel" | cut -f1)"

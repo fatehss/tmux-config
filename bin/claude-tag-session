@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# SessionStart hook: record which tmux window a Claude session belongs to.
+#
+# Appends one JSON record per session-start to ~/.claude/tmux-index.jsonl.
+# The file is append-only; readers dedupe by session_id keeping the newest
+# record. That gives re-tagging for free: resume a session in a different
+# tab and it re-associates with that tab.
+#
+# Deliberately does NOT set sessionTitle. Claude already generates good
+# titles ("Clean up ThinkOn tenant vApp hygiene"); overwriting them with
+# project/branch would be a downgrade and would collide across sessions in
+# the same repo. `lc` reads Claude's own title from the transcript.
+#
+# Contract: must always exit 0 and print nothing. A SessionStart hook that
+# fails or emits stray stdout can disrupt session startup.
+
+set -uo pipefail
+
+INDEX="${CLAUDE_TMUX_INDEX:-$HOME/.claude/tmux-index.jsonl}"
+
+input="$(cat)"
+
+# Outside tmux there is no tab to link to. Nothing to do.
+[ -n "${TMUX_PANE:-}" ] || exit 0
+
+# Resolve the pane to its window. Uses a delimiter unlikely to appear in a
+# window name; tmux names can legitimately contain spaces ("BMT CSA").
+meta="$(tmux display-message -p -t "$TMUX_PANE" \
+  '#{window_id}<|>#{window_name}<|>#{session_name}' 2>/dev/null)" || exit 0
+[ -n "$meta" ] || exit 0
+
+win_id="${meta%%<|>*}"
+rest="${meta#*<|>}"
+win_name="${rest%%<|>*}"
+tmux_session="${rest#*<|>}"
+
+sid="$(printf '%s' "$input"  | jq -r '.session_id // empty')"
+cwd="$(printf '%s' "$input"  | jq -r '.cwd // empty')"
+tpath="$(printf '%s' "$input" | jq -r '.transcript_path // empty')"
+src="$(printf '%s' "$input"  | jq -r '.source // empty')"
+
+[ -n "$sid" ] || exit 0
+
+mkdir -p "$(dirname "$INDEX")" 2>/dev/null || exit 0
+
+# Single atomic append. Concurrent Claude sessions across panes all write
+# here, and writes this small (<1 KB) are atomic on local filesystems.
+jq -nc \
+  --arg sid "$sid" --arg cwd "$cwd" --arg tpath "$tpath" --arg src "$src" \
+  --arg win_id "$win_id" --arg win_name "$win_name" \
+  --arg tsess "$tmux_session" --arg ts "$(date +%s)" \
+  '{session_id:$sid, cwd:$cwd, transcript:$tpath, source:$src,
+    win_id:$win_id, win_name:$win_name, tmux_session:$tsess, ts:($ts|tonumber)}' \
+  >> "$INDEX" 2>/dev/null
+
+exit 0

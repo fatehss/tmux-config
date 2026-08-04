@@ -1,0 +1,17 @@
+# Copy to ~/.zshrc.local — sourced by .zshrc if present, never tracked.
+#
+# Put here anything that is client-specific, machine-specific, or hardcodes
+# an absolute path. Keeping it out of the repo is what lets the repo be
+# public.
+
+# Navigation to local project checkouts
+# alias proj="cd ~/Work/some-project"
+
+# Tools installed outside this repo
+# alias vw='node "$HOME/Work/json-viewer/server.js"'
+
+# Alternate model backends, local proxies, credentials read from disk
+# alias altclaude='ANTHROPIC_BASE_URL=http://127.0.0.1:8317 claude'
+
+# Completions installed by other tools
+# [ -f "$HOME/.some-tool.completion.zsh" ] && source "$HOME/.some-tool.completion.zsh"

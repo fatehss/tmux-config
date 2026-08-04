@@ -1,0 +1,10 @@
+[opener]
+markdown = [
+  { run = 'glow %s | less -RMS', block = true, desc = "Render with glow" },
+]
+
+[open]
+prepend_rules = [
+  { mime = "text/markdown", use = "markdown" },
+  { url = "*.md", use = "markdown" },
+]

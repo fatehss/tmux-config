@@ -1,0 +1,36 @@
+# Yazi theme overrides.
+#
+# This is yazi's built-in [filetype] ruleset with one change: directories
+# were `fg = "blue"`, which resolves to terminal ANSI palette 4. On a black
+# background that sits around 1.6:1 contrast - effectively unreadable.
+#
+# Directories now use an explicit teal-cyan at ~12:1. It's also the
+# complement of the terminal's coral foreground, so dirs read as a distinct
+# navigational layer rather than as differently-tinted body text.
+#
+# Note the document rule below already uses ANSI "cyan" (#00A6B2). The dir
+# color is deliberately a brighter, greener teal so the two don't collide.
+#
+# The full array is reproduced because `rules` replaces rather than merges.
+
+[filetype]
+rules = [
+	# Image
+	{ mime = "image/*", fg = "yellow" },
+	# Media
+	{ mime = "{audio,video}/*", fg = "magenta" },
+	# Archive
+	{ mime = "application/{zip,rar,7z*,tar,gzip,xz,zstd,bzip*,lzma,compress,archive,cpio,arj,xar,ms-cab*}", fg = "red" },
+	# Document
+	{ mime = "application/{pdf,doc,rtf}", fg = "cyan" },
+	# Virtual file system
+	{ mime = "vfs/{absent,stale}", fg = "darkgray" },
+	# Special file
+	{ url = "*", is = "orphan", bg = "red" },
+	{ url = "*", is = "exec"  , fg = "green" },
+	# Dummy file
+	{ url = "*", is = "dummy", bg = "red" },
+	{ url = "*/", is = "dummy", bg = "red" },
+	# Fallback
+	{ url = "*/", fg = "#4FD6DE" },
+]

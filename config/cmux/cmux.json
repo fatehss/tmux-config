@@ -1,0 +1,57 @@
+{
+  // tmux-style keybindings for cmux, mirroring ~/.tmux.conf.
+  //
+  // Prefix is ctrl+shift+A, NOT ctrl+A as in tmux. Reason: cmux has no
+  // equivalent of tmux's `bind C-a send-prefix`, so a ctrl+<letter> prefix
+  // is swallowed before the shell sees it and you lose readline's
+  // beginning-of-line. Terminals cannot encode ctrl+shift at all, so this
+  // prefix can never collide with anything running inside a pane.
+  //
+  // cmux hierarchy vs tmux:
+  //   cmux workspace (sidebar entry)  ~=  tmux window   <- your "tabs"
+  //   cmux pane (a split)             ~=  tmux pane
+  //   cmux surface (tab inside a pane)    no tmux equivalent
+  //
+  // Chords are two-item arrays: ["ctrl+shift+a", "x"] means prefix then x.
+  // Note "|" is NOT a legal key name in cmux's grammar - the allowed bare
+  // punctuation is , . / \ ; ' ` = [ ] - only. So tmux's `prefix |` is
+  // written as shift+backslash, which is the same physical keypress.
+
+  "$schema": "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json",
+
+  "shortcuts": {
+    "bindings": {
+      // ── Splits ── tmux: bind | split-window -h / bind - split-window -v
+      "splitRight": ["ctrl+shift+a", "shift+backslash"],
+      "splitDown": ["ctrl+shift+a", "-"],
+
+      // ── Pane focus ── tmux: bind -n M-Left/Right/Up/Down (no prefix)
+      "focusLeft": "alt+left",
+      "focusRight": "alt+right",
+      "focusUp": "alt+up",
+      "focusDown": "alt+down",
+
+      // ── Pane zoom ── tmux default: prefix z
+      "toggleSplitZoom": ["ctrl+shift+a", "z"],
+      "equalizeSplits": ["ctrl+shift+a", "="],
+
+      // ── Workspaces (your "tabs") ── tmux: prefix 1..9, prefix c
+      // A single binding covers 1-9; cmux expands the digit.
+      "selectWorkspaceByNumber": ["ctrl+shift+a", "1"],
+      "newTab": ["ctrl+shift+a", "c"],
+      "closeWorkspace": ["ctrl+shift+a", "shift+7"],
+      "renameWorkspace": ["ctrl+shift+a", ","],
+      "goToWorkspace": ["ctrl+shift+a", "w"],
+
+      // ── Surfaces (tabs within a pane) ── tmux: prefix n / p
+      "nextSurface": ["ctrl+shift+a", "n"],
+      "prevSurface": ["ctrl+shift+a", "p"],
+
+      // ── Misc ── tmux: bind r source-file ~/.tmux.conf, prefix x kill-pane
+      "reloadConfiguration": ["ctrl+shift+a", "r"],
+      "closeTab": ["ctrl+shift+a", "x"],
+      "toggleSidebar": ["ctrl+shift+a", "b"],
+      "commandPalette": ["ctrl+shift+a", "shift+semicolon"]
+    }
+  }
+}
