@@ -71,6 +71,21 @@ Four Claude Code hooks in `claude/settings.json`:
 Salience tracks required action: working never out-shouts the state that
 actually needs you. Cyan (10.0:1) was rejected for inverting that hierarchy.
 
+### Several sessions in one tab
+
+State is stored per **pane** in `@claude_state`, and the tab colour is a
+rollup of all its panes:
+
+| Panes | Tab |
+|---|---|
+| any needs you | green ● |
+| else any working | purple ◐ |
+| else | dim |
+
+Green wins deliberately. Storing state on the window instead lets concurrent
+sessions clobber each other — a session starting work would erase another
+session's "your turn" and the notification would be lost outright.
+
 Every hook resolves `$TMUX_PANE` to a window id, which is what ties a session
 to a specific tab even when you're looking elsewhere. `~/.tmux.conf` renders
 the green via `#{?@claude_alert,…}` and clears it with an

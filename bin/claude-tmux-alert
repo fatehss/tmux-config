@@ -1,65 +1,88 @@
 #!/usr/bin/env bash
-# Flag the tmux window a Claude session lives in, so its tab turns green
-# when Claude wants your attention.
+# Track Claude state per tmux pane, and roll it up to the tab.
 #
-#   claude-tmux-alert on     mark this window as needing attention (green)
-#   claude-tmux-alert busy   mark this window as working (purple)
-#   claude-tmux-alert off    clear both marks
+#   claude-tmux-alert busy   this pane's Claude is working      (purple ◐)
+#   claude-tmux-alert on     this pane's Claude wants you       (green  ●)
+#   claude-tmux-alert off    clear this pane
+#   claude-tmux-alert seen   clear "wants you" for every pane in this window
+#                            (bound to after-select-window in ~/.tmux.conf)
 #
-# Driven by Claude Code hooks (Notification / Stop / UserPromptSubmit), so
-# the colour reflects actual Claude state - not tmux's generic
-# monitor-activity, which fires on any output at all.
+# State lives on the PANE, in @claude_state (alert | busy | unset). The
+# window's @claude_alert / @claude_busy are derived from all its panes:
 #
-# The mark is a window-level user option, @claude_alert. The status bar
-# reads it via #{?@claude_alert,...} and ~/.tmux.conf clears it with an
-# after-select-window hook when you visit the tab.
+#   any pane alert  -> window alert   (green wins: something needs you)
+#   else any busy   -> window busy    (purple)
+#   else              -> clear
+#
+# Storing state per window instead would make concurrent sessions clobber
+# each other - a session starting work would erase another session's
+# "your turn", losing the notification entirely.
 #
 # Contract: always exit 0 and print nothing. A hook that fails or writes to
 # stdout can interfere with the session.
 
 set -uo pipefail
 
-[ -n "${TMUX_PANE:-}" ] || exit 0
 command -v tmux >/dev/null || exit 0
+
+# Recompute a window's colour from the states of all its panes.
+refresh_window() {
+  local win="$1" states any_alert=0 any_busy=0 s
+  states="$(tmux list-panes -t "$win" -F '#{@claude_state}' 2>/dev/null)" || return
+  while IFS= read -r s; do
+    case "$s" in
+      alert) any_alert=1 ;;
+      busy)  any_busy=1 ;;
+    esac
+  done <<< "$states"
+
+  if [ "$any_alert" = 1 ]; then
+    tmux set-option -w  -t "$win" @claude_alert 1 2>/dev/null
+    tmux set-option -uw -t "$win" @claude_busy    2>/dev/null
+  elif [ "$any_busy" = 1 ]; then
+    tmux set-option -uw -t "$win" @claude_alert   2>/dev/null
+    tmux set-option -w  -t "$win" @claude_busy  1 2>/dev/null
+  else
+    tmux set-option -uw -t "$win" @claude_alert   2>/dev/null
+    tmux set-option -uw -t "$win" @claude_busy    2>/dev/null
+  fi
+}
 
 action="${1:-on}"
 
-# Resolve the pane to its window id up front; the pane may belong to a
-# window that isn't currently selected, which is exactly the case we care
-# about (Claude finishing work in a tab you're not looking at).
+# `seen` operates on the current window, not on a hook's pane.
+if [ "$action" = "seen" ]; then
+  win="$(tmux display-message -p '#{window_id}' 2>/dev/null)" || exit 0
+  [ -n "$win" ] || exit 0
+  # Only alerts are cleared. A pane that is still working stays working -
+  # looking at a tab doesn't make Claude finish.
+  while IFS= read -r p; do
+    [ "$(tmux show-options -pqv -t "$p" @claude_state 2>/dev/null)" = "alert" ] &&
+      tmux set-option -up -t "$p" @claude_state 2>/dev/null
+  done < <(tmux list-panes -t "$win" -F '#{pane_id}' 2>/dev/null)
+  refresh_window "$win"
+  exit 0
+fi
+
+[ -n "${TMUX_PANE:-}" ] || exit 0
 win="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}' 2>/dev/null)" || exit 0
 [ -n "$win" ] || exit 0
 
-# Is this window the one you're currently looking at?
-watching() {
-  case "$(tmux display-message -p -t "$win" \
-          '#{window_active}:#{session_attached}' 2>/dev/null)" in
-    1:[1-9]*) return 0 ;;
-    *)        return 1 ;;
-  esac
-}
-
 case "$action" in
-  off)
-    tmux set-option -uw -t "$win" @claude_alert 2>/dev/null
-    tmux set-option -uw -t "$win" @claude_busy  2>/dev/null
-    ;;
-  busy)
-    # Working supersedes needing-you: a new turn started, so whatever the
-    # previous turn wanted has been answered.
-    tmux set-option -uw -t "$win" @claude_alert 2>/dev/null
-    watching && exit 0
-    tmux set-option -w -t "$win" @claude_busy 1 2>/dev/null
-    ;;
+  busy) tmux set-option -p -t "$TMUX_PANE" @claude_state busy  2>/dev/null ;;
+  off)  tmux set-option -up -t "$TMUX_PANE" @claude_state      2>/dev/null ;;
   on)
-    # No longer working, whatever the outcome.
-    tmux set-option -uw -t "$win" @claude_busy 2>/dev/null
-    # Don't alert a window you're already watching: it would light up green
-    # and stay green, since the clear-on-select hook never fires for the tab
-    # you're already on.
-    watching && exit 0
-    tmux set-option -w -t "$win" @claude_alert 1 2>/dev/null
+    # Don't raise an alert on the tab you're already looking at: it would go
+    # green and stay green, because after-select-window never fires for the
+    # window you're already on. The pane keeps no alert state either, so the
+    # rollup stays consistent with what's displayed.
+    case "$(tmux display-message -p -t "$win" \
+            '#{window_active}:#{session_attached}' 2>/dev/null)" in
+      1:[1-9]*) tmux set-option -up -t "$TMUX_PANE" @claude_state 2>/dev/null ;;
+      *)        tmux set-option -p  -t "$TMUX_PANE" @claude_state alert 2>/dev/null ;;
+    esac
     ;;
 esac
 
+refresh_window "$win"
 exit 0
