@@ -86,6 +86,20 @@ Green wins deliberately. Storing state on the window instead lets concurrent
 sessions clobber each other — a session starting work would erase another
 session's "your turn" and the notification would be lost outright.
 
+Each pane also labels its own state in its top border, so you can tell *which*
+session in a tab wants you:
+
+```
+┌─ ● ready  hydroboat-recon-v2 ──────┐   green
+├─ ◐ working  aai-api ───────────────┤   purple
+├─ dev-workspace ────────────────────┤   dim
+```
+
+The border *line* colour cannot vary per pane — tmux accepts
+`set-option -p pane-border-style` but discards it, and it never appears in
+the pane option table. The border *format* is evaluated per pane, so
+`@claude_state` works there. Costs one screen row in total, not one per pane.
+
 Every hook resolves `$TMUX_PANE` to a window id, which is what ties a session
 to a specific tab even when you're looking elsewhere. `~/.tmux.conf` renders
 the green via `#{?@claude_alert,…}` and clears it with an
