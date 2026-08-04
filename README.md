@@ -95,6 +95,21 @@ session in a tab wants you:
 ├─ dev-workspace ────────────────────┤   dim
 ```
 
+Green clears when you **focus the pane**, not when you visit the tab — so a
+tab with three sessions stays green until you've seen each one that wants you.
+
+Three tmux hooks are needed, because tmux reaches a pane by three routes:
+
+| Hook | Route |
+|---|---|
+| `after-select-pane` | clicking inside a pane, `prefix`+arrow |
+| `after-select-window` | `prefix`+*n*, next/previous-window |
+| `session-window-changed` | **clicking a tab in the status bar** |
+
+That last one matters: a status-bar click runs `switch-client -t =`, not
+`select-window`, so hooking only `after-select-window` silently misses every
+mouse user.
+
 The border *line* colour cannot vary per pane — tmux accepts
 `set-option -p pane-border-style` but discards it, and it never appears in
 the pane option table. The border *format* is evaluated per pane, so
