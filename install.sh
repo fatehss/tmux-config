@@ -37,6 +37,7 @@ MANIFEST=(
   "config/cmux/cmux.json|$HOME/.config/cmux/cmux.json"
   "claude/settings.json|$HOME/.claude/settings.json"
   "ghostty/config|$GHOSTTY"
+  "share/tmux-cheatsheet.txt|$HOME/.local/share/tmux-cheatsheet.txt"
   "bin/claude-tag-session|$HOME/.local/bin/claude-tag-session"
   "bin/claude-tab-pick|$HOME/.local/bin/claude-tab-pick"
   "bin/claude-tab-link|$HOME/.local/bin/claude-tab-link"

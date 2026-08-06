@@ -35,6 +35,7 @@ session picker. `yazi` and `glow` back the `y` and `g` aliases.
 | `config/cmux/cmux.json` | `~/.config/cmux/` |
 | `claude/settings.json` | `~/.claude/settings.json` |
 | `ghostty/config` | macOS: `~/Library/Application Support/com.mitchellh.ghostty/config`<br>Linux: `~/.config/ghostty/config` |
+| `share/tmux-cheatsheet.txt` | `~/.local/share/tmux-cheatsheet.txt` |
 | `bin/*` | `~/.local/bin/` |
 
 ## Commands

@@ -2,7 +2,7 @@
 # tmux-claude — launch or resume tmux sessions for Claude Code work.
 #
 # Usage:
-#   tc                # 4 panes, session "claude" (or reattach if exists)
+#   tc                # single pane, session "claude" (or reattach if exists)
 #   tc 6              # 6 panes
 #   tc 3 mywork       # 3 panes, session "mywork"
 #   tc -r             # pick a session to resume (or auto-attach if only one)
@@ -17,10 +17,10 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
 tc — tmux workspace launcher for Claude Code
 
 USAGE
-  tc                  Create default session (4 panes, named "claude")
+  tc                  Create default session (one pane, named "claude")
                       or reattach if it already exists
   tc [name]           Create/reattach session by name (e.g. tc myproject)
-  tc [panes]          Create with N panes (e.g. tc 6)
+  tc [panes]          Create a tiled "work" window with N panes (e.g. tc 6)
   tc [panes] [name]   Create with N panes and custom name (e.g. tc 3 mywork)
 
 FLAGS
@@ -41,9 +41,15 @@ INSIDE TMUX (prefix = Ctrl+a)
   Alt+Arrow           Move between panes
   Ctrl+a d            Detach (session keeps running)
 
+CLAUDE
+  c                   Launch Claude, pinning this tab's name
+  lc / lc -a          Resume sessions from this tab / any tab
+  lcl [-p|-l]         Link a running session to this tab
+
 PANE BORDER / TAB COLORS
-  Blue                Claude is working (CPU active)
-  Green               Claude is idle (waiting for input)
+  Dim grey            Idle
+  Purple ◐            Claude is working
+  Green ●             Claude wants you (done, or needs permission)
 EOF
   exit 0
 fi
@@ -115,7 +121,7 @@ if [[ "$1" =~ ^[0-9]+$ ]]; then
   PANES="$1"
   SESSION="${2:-claude}"
 else
-  PANES=4
+  PANES=1
   SESSION="${1:-claude}"
 fi
 WORKDIR="$HOME/Work"
@@ -130,24 +136,30 @@ fi
 tmux new-session -d -s "$SESSION" -c "$WORKDIR" -n "keys"
 tmux send-keys -t "$SESSION:keys" "less -R $HOME/.local/share/tmux-cheatsheet.txt" Enter
 
-# Create work window with panes
-tmux new-window -t "$SESSION" -c "$WORKDIR" -n "work"
+# Main window. Plain single shell by default; the tiled "work" grid only when
+# a pane count was actually asked for.
+if (( PANES > 1 )); then
+  tmux new-window -t "$SESSION" -c "$WORKDIR" -n "work"
 
-for ((i=2; i<=PANES; i++)); do
-  if (( i % 2 == 0 )); then
-    tmux split-window -t "$SESSION:work" -h -c "$WORKDIR"
-  else
-    tmux split-window -t "$SESSION:work" -v -c "$WORKDIR"
-  fi
+  for ((i=2; i<=PANES; i++)); do
+    if (( i % 2 == 0 )); then
+      tmux split-window -t "$SESSION:work" -h -c "$WORKDIR"
+    else
+      tmux split-window -t "$SESSION:work" -v -c "$WORKDIR"
+    fi
+    tmux select-layout -t "$SESSION:work" tiled
+  done
+
+  # Final tiled layout for even sizing
   tmux select-layout -t "$SESSION:work" tiled
-done
+  tmux select-pane -t "$SESSION:work.1"
 
-# Final tiled layout for even sizing
-tmux select-layout -t "$SESSION:work" tiled
-tmux select-pane -t "$SESSION:work.1"
-
-# Focus the work window (not cheatsheet)
-tmux select-window -t "$SESSION:work"
+  # Focus the work window (not cheatsheet)
+  tmux select-window -t "$SESSION:work"
+else
+  tmux new-window -t "$SESSION" -c "$WORKDIR"
+  tmux select-window -t "$SESSION:2"
+fi
 
 # Start the monitor in the background
 nohup "$HOME/.local/bin/tmux-claude-monitor" "$SESSION" >/dev/null 2>&1 &

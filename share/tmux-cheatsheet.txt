@@ -1,0 +1,66 @@
+
+  tmux cheatsheet                          prefix = Ctrl+a
+  ───────────────────────────────────────────────────────────
+
+  PANES (splits)
+    Ctrl+a |         split vertical (side by side)
+    Ctrl+a -         split horizontal (top/bottom)
+    Ctrl+a x         close current pane (confirms y/n)
+    Ctrl+a z         zoom/unzoom pane (fullscreen toggle)
+    Ctrl+a !         break pane into its own window
+    Alt+Arrow         move between panes (no prefix)
+    Ctrl+a Arrow     resize pane (hold arrow to keep resizing)
+
+  WINDOWS (tabs)
+    Ctrl+a c         new window
+    Ctrl+a ,         rename current window
+    Ctrl+a n / p     next / previous window
+    Ctrl+a 1-9       jump to window by number
+    Ctrl+a &         close current window
+
+  SESSIONS
+    Ctrl+a $         rename session
+    Ctrl+a d         detach (session keeps running)
+    Ctrl+a s         list sessions (interactive picker)
+
+  COPY / SCROLL
+    Ctrl+a [         enter scroll mode (q to exit)
+                      use arrow keys or PgUp/PgDn to scroll
+                      mouse scroll also works
+
+  OTHER
+    Ctrl+a r         reload config
+    Ctrl+a ?         list ALL key bindings
+
+  CLAUDE
+    c                launch Claude, pinning this tab's name so it stops drifting
+    lc               list/resume Claude sessions belonging to THIS tab
+    lc -a            same, across every tab
+    lcl              link a running session to this tab
+    lcl -p           pick which session to link (fzf picker)
+    lcl -l           list what's linked to this tab
+
+  WORKSPACE
+    tc               new/reattach session "claude" (single pane)
+    tc 6             session with a tiled 6-pane "work" window
+    tc 3 mywork      3 panes, session named "mywork"
+    tc -r            resume — pick a session to reattach
+    tc -l  /  tc -k  list sessions / kill a session
+    tc -h            full help
+
+  FILES & VIEWING
+    y                yazi file manager (cd's to wherever you exit)
+    g <file.md>      glow — render markdown
+    o <path>         open in Finder / default app
+
+  TMUX ITSELF
+    tmux attach          reattach to last session
+    tmux ls              list sessions
+    tmux kill-session    kill current session
+
+  TAB / PANE COLORS
+    dim grey         idle
+    purple  ◐        Claude is working
+    green   ●        Claude wants you (finished, or needs permission)
+
+  Press q to close this cheatsheet.  Switch back: Ctrl+a n
