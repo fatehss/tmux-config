@@ -25,14 +25,19 @@ input="$(cat)"
 
 # Resolve the pane to its window. Uses a delimiter unlikely to appear in a
 # window name; tmux names can legitimately contain spaces ("BMT CSA").
+# The server pid scopes win_id. Window ids are reassigned by a fresh tmux
+# server, so without it an old @6 would match whatever tab happens to be @6
+# after a reboot. Across restarts only the window NAME is meaningful.
 meta="$(tmux display-message -p -t "$TMUX_PANE" \
-  '#{window_id}<|>#{window_name}<|>#{session_name}' 2>/dev/null)" || exit 0
+  '#{window_id}<|>#{window_name}<|>#{session_name}<|>#{pid}' 2>/dev/null)" || exit 0
 [ -n "$meta" ] || exit 0
 
 win_id="${meta%%<|>*}"
 rest="${meta#*<|>}"
 win_name="${rest%%<|>*}"
-tmux_session="${rest#*<|>}"
+rest="${rest#*<|>}"
+tmux_session="${rest%%<|>*}"
+server_pid="${rest#*<|>}"
 
 sid="$(printf '%s' "$input"  | jq -r '.session_id // empty')"
 cwd="$(printf '%s' "$input"  | jq -r '.cwd // empty')"
@@ -48,9 +53,10 @@ mkdir -p "$(dirname "$INDEX")" 2>/dev/null || exit 0
 jq -nc \
   --arg sid "$sid" --arg cwd "$cwd" --arg tpath "$tpath" --arg src "$src" \
   --arg win_id "$win_id" --arg win_name "$win_name" \
-  --arg tsess "$tmux_session" --arg ts "$(date +%s)" \
+  --arg tsess "$tmux_session" --arg spid "$server_pid" --arg ts "$(date +%s)" \
   '{session_id:$sid, cwd:$cwd, transcript:$tpath, source:$src,
-    win_id:$win_id, win_name:$win_name, tmux_session:$tsess, ts:($ts|tonumber)}' \
+    win_id:$win_id, win_name:$win_name, tmux_session:$tsess,
+    server_pid:$spid, ts:($ts|tonumber)}' \
   >> "$INDEX" 2>/dev/null
 
 exit 0

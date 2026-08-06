@@ -49,9 +49,12 @@ command -v jq   >/dev/null || { echo "lc: jq not found" >&2; exit 1; }
 scope_all=0
 [ "${1:-}" = "--all" ] && scope_all=1
 
-meta="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}<|>#{window_name}' 2>/dev/null)"
+meta="$(tmux display-message -p -t "$TMUX_PANE" \
+        '#{window_id}<|>#{window_name}<|>#{pid}' 2>/dev/null)"
 cur_id="${meta%%<|>*}"
-cur_name="${meta#*<|>}"
+rest="${meta#*<|>}"
+cur_name="${rest%%<|>*}"
+cur_spid="${rest#*<|>}"
 
 # ── live sessions ─────────────────────────────────────────────────────
 # `claude agents --json` only knows about running processes. Used purely to
@@ -59,13 +62,26 @@ cur_name="${meta#*<|>}"
 live="$(claude agents --json 2>/dev/null | jq -r '.[]?|.sessionId' 2>/dev/null || true)"
 
 # ── select + dedupe ───────────────────────────────────────────────────
-# Match on window id OR window name: the id is exact while this tmux server
-# lives, the name survives a server restart. Newest record per session_id
-# wins, so re-tagging (resuming in another tab) takes effect.
-rows="$(jq -rs --arg id "$cur_id" --arg name "$cur_name" --argjson all "$scope_all" '
+# Newest record per session_id wins, so re-tagging (resuming in another tab)
+# takes effect. A record matches this tab if EITHER:
+#
+#   * it was written by the tmux server that is running now AND its window id
+#     matches - exact, and survives renaming the tab; or
+#   * its window name matches - the only thing that survives a reboot, since
+#     a fresh server reassigns every @id from scratch.
+#
+# The server_pid guard is what stops a stale @6 from matching whatever tab
+# happens to be @6 after a restart. Records written before server_pid existed
+# have none, so they fall back to name matching only - which is the correct
+# conservative behaviour for them.
+rows="$(jq -rs --arg id "$cur_id" --arg name "$cur_name" --arg spid "$cur_spid" \
+        --argjson all "$scope_all" '
     group_by(.session_id)
     | map(max_by(.ts))
-    | map(select($all == 1 or .win_id == $id or .win_name == $name))
+    | map(select(
+        $all == 1
+        or ((.server_pid // "") == $spid and .win_id == $id)
+        or .win_name == $name))
     | .[]
     | [.session_id, .cwd, .transcript, .win_name] | @tsv
   ' "$INDEX" 2>/dev/null)"

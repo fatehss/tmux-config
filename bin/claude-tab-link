@@ -10,6 +10,9 @@
 #   claude-tab-link <sid> [<sid>...]    link specific session ids to this tab
 #   claude-tab-link --window "BMT CSA" <sid>    link to a named tab instead
 #   claude-tab-link --list              show current links for this tab
+#   claude-tab-link --renamed           re-point this tab's sessions at its
+#                                       current name (bound to
+#                                       after-rename-window in ~/.tmux.conf)
 #
 # Auto-detect works by joining pid -> tty -> tmux pane, the same way
 # tmux-claude-session-manager does. Sessions with no controlling tty
@@ -27,8 +30,9 @@ command -v jq >/dev/null || die "jq not found"
 mode="auto"; want_win=""; sids=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --pick)   mode="pick"; shift ;;
-    --list)   mode="list"; shift ;;
+    --pick)    mode="pick"; shift ;;
+    --list)    mode="list"; shift ;;
+    --renamed) mode="renamed"; shift ;;
     --window) want_win="${2:-}"; shift 2 ;;
     -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*)       die "unknown flag: $1" ;;
@@ -41,12 +45,19 @@ if [ -n "$want_win" ]; then
   meta="$(tmux list-windows -a -F '#{window_id}<|>#{window_name}' 2>/dev/null \
           | awk -v w="$want_win" -F'<\\|>' '$1==w || $2==w {print; exit}')"
   [ -n "$meta" ] || die "no tmux window matching '$want_win'"
+elif [ "$mode" = "renamed" ]; then
+  # Runs from tmux's after-rename-window hook via run-shell, which does NOT
+  # export TMUX_PANE. An untargeted display-message resolves to the hook's
+  # target window, which is exactly the window that was renamed.
+  meta="$(tmux display-message -p '#{window_id}<|>#{window_name}' 2>/dev/null)"
+  [ -n "$meta" ] || exit 0
 else
   [ -n "${TMUX_PANE:-}" ] || die "not inside tmux (use --window NAME)"
   meta="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}<|>#{window_name}' 2>/dev/null)"
 fi
 win_id="${meta%%<|>*}"
 win_name="${meta#*<|>}"
+server_pid="$(tmux display-message -p '#{pid}' 2>/dev/null)"
 
 # ── transcript path for a session id ──────────────────────────────────
 transcript_of() {
@@ -84,9 +95,10 @@ link_one() {
   jq -nc --arg sid "$sid" --arg cwd "$c" --arg tpath "$t" \
          --arg win_id "$win_id" --arg win_name "$win_name" \
          --arg tsess "$(tmux display-message -p '#{session_name}' 2>/dev/null)" \
-         --arg ts "$(date +%s)" \
+         --arg spid "$server_pid" --arg ts "$(date +%s)" \
     '{session_id:$sid, cwd:$cwd, transcript:$tpath, source:"link",
-      win_id:$win_id, win_name:$win_name, tmux_session:$tsess, ts:($ts|tonumber)}' \
+      win_id:$win_id, win_name:$win_name, tmux_session:$tsess,
+      server_pid:$spid, ts:($ts|tonumber)}' \
     >> "$INDEX"
 
   local title; title="$(title_of "$t")"
@@ -95,6 +107,29 @@ link_one() {
 }
 
 case "$mode" in
+renamed)
+  # A tab was renamed. Re-point every session currently mapped to this window
+  # at the new name, by appending fresh records (readers take newest-per-id).
+  #
+  # This is what makes the index survive a reboot. Window ids are reassigned
+  # by a new tmux server, so the NAME is the only durable key - but a session
+  # started while automatic-rename was on got tagged with junk like "node" or
+  # "less". Without this, renaming the tab to something meaningful would
+  # orphan every session recorded under the old junk name.
+  [ -s "$INDEX" ] || exit 0
+  sids="$(jq -rs --arg id "$win_id" --arg spid "$server_pid" --arg n "$win_name" '
+      group_by(.session_id) | map(max_by(.ts))
+      | map(select((.server_pid // "") == $spid and .win_id == $id
+                   and .win_name != $n))
+      | .[] | .session_id' "$INDEX" 2>/dev/null)"
+  [ -n "$sids" ] || exit 0
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    link_one "$s" >/dev/null 2>&1
+  done <<< "$sids"
+  exit 0
+  ;;
+
 list)
   [ -s "$INDEX" ] || die "index is empty"
   echo "[$win_name] linked sessions:"

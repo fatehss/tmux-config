@@ -161,8 +161,12 @@ else
   tmux select-window -t "$SESSION:2"
 fi
 
-# Start the monitor in the background
-nohup "$HOME/.local/bin/tmux-claude-monitor" "$SESSION" >/dev/null 2>&1 &
+# No CPU monitor here any more. tmux-claude-monitor guessed Claude's state from
+# a 5% CPU threshold every 3s and set window-status-style to a solid colour,
+# which sits underneath window-status-format and buried the purple/green
+# scheme. Claude Code hooks now report state exactly - see claude-tmux-alert.
+# The script is still on disk if you want to run it by hand; it is
+# deliberately neither tracked nor started automatically.
 
 # Attach
 exec tmux attach -t "$SESSION"

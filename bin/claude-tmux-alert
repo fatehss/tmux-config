@@ -57,8 +57,13 @@ action="${1:-on}"
 # stacked, landing on one shouldn't dismiss the other two. The tab stays
 # green until you've actually visited each pane that wants you.
 if [ "$action" = "seen" ]; then
-  meta="$(tmux display-message -p '#{pane_id}:#{window_id}' 2>/dev/null)" || exit 0
-  pane="${meta%%:*}"; win="${meta##*:}"
+  # The pane id is passed in by the hook as #{pane_id}, which tmux expands
+  # against the HOOK's target. Resolving it here with an untargeted
+  # display-message would instead give whatever window is current, which is
+  # only coincidentally the same one.
+  pane="${2:-}"
+  [ -n "$pane" ] || pane="$(tmux display-message -p '#{pane_id}' 2>/dev/null)"
+  win="$(tmux display-message -p -t "$pane" '#{window_id}' 2>/dev/null)"
   [ -n "$pane" ] && [ -n "$win" ] || exit 0
   # Only alerts clear. A pane that is still working stays working - looking
   # at it doesn't make Claude finish.
