@@ -44,11 +44,13 @@ c() {
 #   lcl          link live Claude sessions running in this tab
 #   lcl -p       pick any past session and link it here
 #   lcl -l       show what's linked to this tab
+#   lcl -u       unlink sessions from this tab (picker; TAB marks several)
 lcl() {
   local a=()
   case "${1:-}" in
     -p|--pick) a=(--pick) ;;
     -l|--list) a=(--list) ;;
+    -u|--unlink) shift; a=(--unlink "$@") ;;
     *)         a=("$@") ;;
   esac
   command claude-tab-link "${a[@]}"

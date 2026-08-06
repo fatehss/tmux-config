@@ -10,6 +10,8 @@
 #   claude-tab-link <sid> [<sid>...]    link specific session ids to this tab
 #   claude-tab-link --window "BMT CSA" <sid>    link to a named tab instead
 #   claude-tab-link --list              show current links for this tab
+#   claude-tab-link --unlink [<sid>...] unlink sessions from this tab; with no
+#                                       ids, pick from what's linked here
 #   claude-tab-link --renamed           re-point this tab's sessions at its
 #                                       current name (bound to
 #                                       after-rename-window in ~/.tmux.conf)
@@ -33,10 +35,11 @@ while [ $# -gt 0 ]; do
     --pick)    mode="pick"; shift ;;
     --list)    mode="list"; shift ;;
     --renamed) mode="renamed"; shift ;;
+    --unlink)  mode="unlink"; shift ;;
     --window) want_win="${2:-}"; shift 2 ;;
     -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*)       die "unknown flag: $1" ;;
-    *)        sids+=("$1"); mode="explicit"; shift ;;
+    *)        sids+=("$1"); [ "$mode" = "unlink" ] || mode="explicit"; shift ;;
   esac
 done
 
@@ -106,7 +109,58 @@ link_one() {
   echo "      ${c/#$HOME/~}  ·  ${sid:0:8}"
 }
 
+# The index is append-only and readers take the newest record per session, so
+# unlinking is a tombstone rather than a rewrite. That keeps concurrent Claude
+# sessions appending safely - no locking, no lost writes. Resuming the session
+# in a tab re-tags it with a newer record, which correctly re-links it.
+unlink_one() {
+  local sid="$1" title t
+  t="$(transcript_of "$sid")"
+  title="$(title_of "$t")"
+  mkdir -p "$(dirname "$INDEX")"
+  jq -nc --arg sid "$sid" --arg ts "$(date +%s)" \
+    '{session_id:$sid, source:"unlink", ts:($ts|tonumber)}' >> "$INDEX"
+  echo "  ✓ unlinked ${title:-$sid}"
+}
+
+# Sessions currently linked to this tab, newest record per id, tombstones
+# excluded.
+linked_here() {
+  jq -rs --arg id "$win_id" --arg n "$win_name" --arg spid "$server_pid" '
+      group_by(.session_id) | map(max_by(.ts))
+      | map(select(.source != "unlink"))
+      | map(select(((.server_pid // "") == $spid and .win_id == $id)
+                   or .win_name == $n))
+      | .[] | [.session_id, .cwd] | @tsv' "$INDEX" 2>/dev/null
+}
+
 case "$mode" in
+unlink)
+  [ -s "$INDEX" ] || die "index is empty"
+  if [ "${#sids[@]}" -gt 0 ]; then
+    echo "unlinking from tab [$win_name]:"
+    for s in "${sids[@]}"; do unlink_one "$s"; done
+    exit 0
+  fi
+  command -v fzf >/dev/null || die "fzf not found (or pass session ids)"
+  rows=""
+  while IFS=$'\t' read -r sid cwd; do
+    [ -n "$sid" ] || continue
+    title="$(title_of "$(transcript_of "$sid")")"
+    rows+="$sid"$'\t'"$(printf '%-56s %s' "${title:-(untitled)}" "${cwd/#$HOME/~}")"$'\n'
+  done <<< "$(linked_here)"
+  [ -n "${rows//[$'\n']/}" ] || die "nothing linked to tab [$win_name]"
+  sel="$(printf '%s' "$rows" | fzf --ansi --with-nth=2.. --delimiter='\t' \
+          --multi --height=60% --layout=reverse --border=rounded \
+          --header="unlink from [$win_name]  ·  TAB to mark several  ·  enter to unlink")"
+  [ -n "$sel" ] || exit 130
+  echo "unlinking from tab [$win_name]:"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    unlink_one "$(printf '%s' "$line" | cut -f1)"
+  done <<< "$sel"
+  ;;
+
 renamed)
   # A tab was renamed. Re-point every session currently mapped to this window
   # at the new name, by appending fresh records (readers take newest-per-id).
@@ -133,9 +187,11 @@ renamed)
 list)
   [ -s "$INDEX" ] || die "index is empty"
   echo "[$win_name] linked sessions:"
-  jq -rs --arg id "$win_id" --arg n "$win_name" '
+  jq -rs --arg id "$win_id" --arg n "$win_name" --arg spid "$server_pid" '
       group_by(.session_id) | map(max_by(.ts))
-      | map(select(.win_id==$id or .win_name==$n)) | .[]
+      | map(select(.source != "unlink"))
+      | map(select(((.server_pid // "") == $spid and .win_id == $id)
+                   or .win_name == $n)) | .[]
       | "  \(.session_id[0:8])  \(.cwd)"' "$INDEX" 2>/dev/null
   ;;
 

@@ -45,7 +45,7 @@ session picker. `yazi` and `glow` back the `y` and `g` aliases.
 | `c` | Claude, pinning the tmux window name so the tab stops drifting |
 | `lc` | List/resume Claude sessions belonging to **this tmux tab** |
 | `lc -a` | Same, across every tab |
-| `lcl` | Link a running session to this tab (`-p` picker, `-l` list) |
+| `lcl` | Link a running session to this tab (`-p` picker, `-l` list, `-u` unlink) |
 | `tc` | tmux workspace launcher (`tc 6`, `tc -r`, `tc -k`) |
 | `y` | yazi, cd-ing to wherever you exit |
 | `g` / `o` / `vw` | glow / open / json-viewer |
@@ -123,6 +123,14 @@ the green via `#{?@claude_alert,…}` and clears it with an
 
 The index is keyed on **both** window id and window name: the id is exact
 while the tmux server lives, the name survives a restart.
+
+### Unlinking
+
+`lcl -u` opens a picker of what's linked to this tab (`TAB` marks several), or
+takes session ids directly. The index is append-only, so an unlink is a
+tombstone record rather than a rewrite — that keeps concurrent Claude sessions
+appending without locking. Resuming the session in a tab re-tags it, which
+re-links it; the tombstone is not permanent.
 
 ### Machine-local state (not tracked)
 

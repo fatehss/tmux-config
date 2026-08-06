@@ -78,6 +78,7 @@ rows="$(jq -rs --arg id "$cur_id" --arg name "$cur_name" --arg spid "$cur_spid" 
         --argjson all "$scope_all" '
     group_by(.session_id)
     | map(max_by(.ts))
+    | map(select(.source != "unlink"))
     | map(select(
         $all == 1
         or ((.server_pid // "") == $spid and .win_id == $id)
