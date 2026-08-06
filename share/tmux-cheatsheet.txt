@@ -23,10 +23,27 @@
     Ctrl+a d         detach (session keeps running)
     Ctrl+a s         list sessions (interactive picker)
 
-  COPY / SCROLL
-    Ctrl+a [         enter scroll mode (q to exit)
-                      use arrow keys or PgUp/PgDn to scroll
-                      mouse scroll also works
+  COPY / SCROLL  (vi keys — Ctrl+a [ to enter, q to exit)
+    Ctrl+a [         enter scroll mode
+    Ctrl+a PgUp      enter scroll mode AND page up in one motion
+
+    move             k / j          up / down one line
+                     Ctrl+u / Ctrl+d   half page
+                     Ctrl+b / Ctrl+f   full page
+                     g / G          very top / very bottom
+                     H / M / L      top / middle / bottom of screen
+                     w / b / e      forward / back / end of word
+                     0 / $          start / end of line
+                     f<char>        jump to next <char>  (; repeats)
+                     :<n>           go to line n
+
+    search           /text          search down, then n / N
+                     ?text          search up
+
+    select & copy    v              start selection
+                     y              copy selection to macOS clipboard
+                     Ctrl+v         rectangle (block) selection
+                     mouse drag     selects AND copies automatically
 
   OTHER
     Ctrl+a r         reload config

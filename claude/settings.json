@@ -59,7 +59,7 @@
     "type": "command",
     "command": "node \"$HOME/.claude/hooks/gsd-statusline.js\""
   },
-  "effortLevel": "medium",
+  "effortLevel": "high",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "skipWorkflowUsageWarning": true,

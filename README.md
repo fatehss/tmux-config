@@ -138,6 +138,20 @@ re-links it; the tombstone is not permanent.
 git — window ids and paths don't transfer. It rebuilds itself as you work; use
 `lcl` to backfill sessions that predate it.
 
+## Copy mode
+
+`mode-keys vi`, so scrollback navigation is vim-shaped: `/` and `?` to search
+with `n`/`N`, `g`/`G` for top/bottom, `Ctrl+u`/`Ctrl+d` half page, `w`/`b`/`e`
+word motion, `f<char>` jump, `:<n>` goto-line, `H`/`M`/`L` screen position.
+The last five have no equivalent in tmux's emacs table.
+
+`v` starts a selection and `y` copies to the macOS clipboard — tmux's defaults
+put `v` on rectangle-toggle and selection on `Space`, which no vim user
+expects. Rectangle mode stays on `Ctrl+v`.
+
+Mouse drag selects *and* copies via `pbcopy`, bound in both the vi and emacs
+tables so it is unaffected by `mode-keys`.
+
 ## Colour scheme
 
 Ghostty runs Terminal.app's Homebrew profile with the hue rotated green → red,
