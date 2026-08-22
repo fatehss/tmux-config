@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+# Pick a codex session belonging to the current tmux window.
+#
+# Prints "<cwd>\t<session_id>" for the chosen session, or nothing if the user
+# cancelled. The `lcx` shell function consumes that and does the cd + resume,
+# because only a shell function can change the directory of your interactive
+# shell. Mirrors claude-tab-pick, which does the same job for Claude.
+#
+# Usage:
+#   codex-tab-pick            pick a session for the current window
+#   codex-tab-pick --all      pick from every window
+#   codex-tab-pick --preview <session_id>   (internal, used by fzf)
+
+set -uo pipefail
+
+INDEX="${CODEX_TMUX_INDEX:-$HOME/.codex/tmux-index.jsonl}"
+LOCKS="$HOME/.codex/thread-writer-locks"
+
+# Codex keeps thread metadata (title, cwd, archived) in a SQLite database
+# whose name carries a schema version - state_5.sqlite today. Pick the
+# highest-numbered one rather than hardcoding, so a codex upgrade that bumps
+# the schema doesn't silently blank every title.
+codex_db() {
+  local db
+  db="$(ls -1 "$HOME"/.codex/state_*.sqlite 2>/dev/null | sort -V | tail -1)"
+  [ -n "$db" ] && printf '%s' "$db"
+}
+
+# Title for a thread. Codex stores the first user message as the title, which
+# can be a whole paragraph, so callers truncate. Empty for threads that never
+# got a user turn.
+codex_title() {
+  local db sid
+  db="$(codex_db)" || return
+  [ -n "$db" ] || return
+  sid="$1"
+  sqlite3 "$db" \
+    "SELECT COALESCE(NULLIF(name,''), NULLIF(title,''), NULLIF(first_user_message,''))
+     FROM threads WHERE id='${sid//\'/\'\'}' LIMIT 1;" 2>/dev/null \
+    | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//'
+}
+
+# ── preview pane ──────────────────────────────────────────────────────
+if [ "${1:-}" = "--preview" ]; then
+  sid="${2:-}"
+  rec="$(grep -F "\"session_id\":\"$sid\"" "$INDEX" 2>/dev/null | tail -1)"
+  [ -n "$rec" ] || exit 0
+  cwd="$(printf '%s' "$rec" | jq -r '.cwd')"
+  tpath="$(printf '%s' "$rec" | jq -r '.transcript')"
+  tab="$(printf '%s' "$rec" | jq -r '.win_name')"
+
+  printf '\033[1mtab\033[0m   %s\n' "$tab"
+  printf '\033[1mdir\033[0m   %s\n' "${cwd/#$HOME/~}"
+  printf '\033[1mid\033[0m    %s\n\n' "$sid"
+
+  [ -f "$tpath" ] || { echo "(rollout missing)"; exit 0; }
+
+  printf '\033[1mrecent prompts\033[0m\n'
+  # User turns are response_item records with role "user"; the content is an
+  # array of typed parts. Codex prepends the repo's AGENTS.md as a synthetic
+  # user turn, so drop anything that starts with that marker - it is the same
+  # wall of text in every session and would crowd out the real prompts.
+  # Each turn is flattened to ONE line before filtering: codex's synthetic
+  # turns (AGENTS.md, <environment_context>, <user_instructions>) are
+  # multi-line, so a line-based filter would drop the first line and leak the
+  # rest as fake prompts.
+  jq -r '
+      select(.type=="response_item" and .payload.role=="user")
+      | .payload.content
+      | (if type=="string" then . else ([.[]?|select(.type=="input_text").text]|join(" ")) end)
+      | gsub("\\s+"; " ") | sub("^ "; "")
+      | select(length > 0)
+      | select(startswith("# AGENTS.md") or startswith("<environment_context>")
+               or startswith("<user_instructions>") or startswith("<INSTRUCTIONS>") | not)
+    ' "$tpath" 2>/dev/null \
+    | tail -6 | cut -c1-220 | sed 's/^/  › /'
+  exit 0
+fi
+
+command -v jq      >/dev/null || { echo "lcx: jq not found" >&2; exit 1; }
+command -v sqlite3 >/dev/null || { echo "lcx: sqlite3 not found" >&2; exit 1; }
+[ -n "${TMUX_PANE:-}" ] || { echo "lcx: not inside tmux" >&2; exit 1; }
+[ -s "$INDEX" ] || { echo "lcx: no codex sessions recorded yet (index is empty)" >&2; exit 1; }
+
+scope_all=0
+[ "${1:-}" = "--all" ] && scope_all=1
+
+meta="$(tmux display-message -p -t "$TMUX_PANE" \
+        '#{window_id}<|>#{window_name}<|>#{pid}' 2>/dev/null)"
+cur_id="${meta%%<|>*}"
+rest="${meta#*<|>}"
+cur_name="${rest%%<|>*}"
+cur_spid="${rest#*<|>}"
+
+# ── select + dedupe ───────────────────────────────────────────────────
+# Identical matching rules to claude-tab-pick: newest record per session_id
+# wins, and a record belongs to this tab if the tmux server that wrote it is
+# still running and the window id matches, or if the window name matches
+# (the only key that survives a tmux restart).
+rows="$(jq -rs --arg id "$cur_id" --arg name "$cur_name" --arg spid "$cur_spid" \
+        --argjson all "$scope_all" '
+    group_by(.session_id)
+    | map(max_by(.ts))
+    | map(select(.source != "unlink"))
+    | map(select(
+        $all == 1
+        or ((.server_pid // "") == $spid and .win_id == $id)
+        or .win_name == $name))
+    | .[]
+    | [.session_id, .cwd, .transcript, .win_name] | @tsv
+  ' "$INDEX" 2>/dev/null)"
+
+[ -n "$rows" ] || {
+  if [ "$scope_all" = 1 ]; then echo "lcx: no codex sessions recorded yet" >&2
+  else echo "lcx: no codex sessions for tab '$cur_name' (try: lcx -a)" >&2; fi
+  exit 1
+}
+
+now="$(date +%s)"
+menu=""
+while IFS=$'\t' read -r sid cwd tpath tab; do
+  [ -n "$sid" ] || continue
+  [ -f "$tpath" ] || continue          # rollout deleted; not resumable
+
+  title="$(codex_title "$sid")"
+  [ -n "$title" ] || title="(untitled) $(basename "$cwd")"
+
+  mtime="$(stat -f %m "$tpath" 2>/dev/null || stat -c %Y "$tpath" 2>/dev/null || echo "$now")"
+  age=$(( (now - mtime) / 60 ))
+  if   [ "$age" -lt 60 ];   then ago="${age}m"
+  elif [ "$age" -lt 1440 ]; then ago="$((age/60))h"
+  else                           ago="$((age/1440))d"; fi
+
+  # Codex holds a writer lock per live thread. Its presence is a much better
+  # liveness signal than scanning the process table, which cannot tell which
+  # of several codex processes owns which thread.
+  if [ -e "$LOCKS/$sid.lock" ]; then dot=$'\033[32m●\033[0m'; else dot=$'\033[90m○\033[0m'; fi
+
+  if [ "$scope_all" = 1 ]; then
+    label="$(printf '%s \033[36m[%s]\033[0m %-52s \033[90m%4s  %s\033[0m' \
+             "$dot" "$tab" "${title:0:52}" "$ago" "${cwd/#$HOME/~}")"
+  else
+    label="$(printf '%s %-56s \033[90m%4s  %s\033[0m' \
+             "$dot" "${title:0:56}" "$ago" "${cwd/#$HOME/~}")"
+  fi
+  menu+="$mtime"$'\t'"$sid"$'\t'"$cwd"$'\t'"$label"$'\n'
+done <<< "$rows"
+
+[ -n "$menu" ] || { echo "lcx: no resumable sessions (rollouts missing)" >&2; exit 1; }
+
+menu="$(printf '%s' "$menu" | sort -rn -k1,1)"
+count="$(printf '%s\n' "$menu" | grep -c . )"
+
+if [ "$scope_all" = 1 ]; then header="all tabs · $count codex sessions"
+else                          header="[$cur_name] · $count codex sessions"; fi
+
+sel="$(printf '%s\n' "$menu" | cut -f2- \
+  | fzf --ansi --with-nth=3.. --delimiter='\t' \
+        --height=80% --layout=reverse --border=rounded \
+        --header="$header  ·  ● live  ○ closed  ·  enter resumes" \
+        --preview="$0 --preview {1}" \
+        --preview-window='down,45%,border-top,wrap')"
+
+[ -n "$sel" ] || exit 130            # cancelled
+
+printf '%s\t%s\n' "$(printf '%s' "$sel" | cut -f2)" "$(printf '%s' "$sel" | cut -f1)"

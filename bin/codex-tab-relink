@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Re-point a codex session at the tab you are resuming it in.
+#
+# Claude gets this for free: its SessionStart hook fires on resume too, so
+# claude-tag-session appends a fresh record and `lc` follows the session to
+# whatever tab you reopened it in. Codex fires SessionStart only on a fresh
+# start - `codex resume` fires nothing - so without this, a session resumed
+# in another tab keeps pointing at the tab it was born in and `lcx` there
+# would never list it.
+#
+# Called by the `lcx` shell function just before it resumes. Reads the newest
+# record for the session to recover cwd/transcript, then re-tags it against
+# the CURRENT pane by feeding codex-tag-session the same payload shape codex
+# would have sent.
+#
+# Contract: silent, always exit 0. Failure to re-tag must never stop a resume.
+
+set -uo pipefail
+
+INDEX="${CODEX_TMUX_INDEX:-$HOME/.codex/tmux-index.jsonl}"
+sid="${1:-}"
+
+[ -n "$sid" ] || exit 0
+[ -s "$INDEX" ] || exit 0
+[ -n "${TMUX_PANE:-}" ] || exit 0
+command -v jq >/dev/null || exit 0
+
+payload="$(jq -rs --arg sid "$sid" '
+    map(select(.session_id == $sid))
+    | if length == 0 then empty else max_by(.ts) end
+    | {session_id: .session_id, cwd: .cwd,
+       transcript_path: .transcript, source: "resume"}
+    | tojson' "$INDEX" 2>/dev/null)"
+
+[ -n "$payload" ] || exit 0
+
+printf '%s' "$payload" | "$(dirname "$0")/codex-tag-session" >/dev/null 2>&1
+
+exit 0

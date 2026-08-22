@@ -13,8 +13,22 @@
 #
 # Contract: must always exit 0 and print nothing. A SessionStart hook that
 # fails or emits stray stdout can disrupt session startup.
+#
+# --json makes it print "{}" on every exit path instead. Codex runs the same
+# hook contract as Claude but rejects an empty SessionStart response ("hook
+# returned invalid session start JSON output"), so codex/hooks.json passes
+# the flag and ~/.claude/settings.json does not.
+#
+# The index path is overridable so codex sessions land in their own file -
+# see codex-tag-session. Mixing them would make `lc` offer codex sessions to
+# `claude --resume`, which cannot resume them.
 
 set -uo pipefail
+
+EMIT_JSON=0
+[ "${1:-}" = "--json" ] && { EMIT_JSON=1; shift; }
+emit() { [ "$EMIT_JSON" = 1 ] && printf '{}\n'; return 0; }
+trap emit EXIT
 
 INDEX="${CLAUDE_TMUX_INDEX:-$HOME/.claude/tmux-index.jsonl}"
 

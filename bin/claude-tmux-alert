@@ -20,9 +20,28 @@
 # "your turn", losing the notification entirely.
 #
 # Contract: always exit 0 and print nothing. A hook that fails or writes to
-# stdout can interfere with the session.
+# stdout can interfere with the session - and tmux's run-shell would surface
+# stray output in a popup.
+#
+# --json prints "{}" instead. Codex rejects an empty hook response, so
+# codex/hooks.json passes it; Claude's settings.json and the tmux hooks in
+# .tmux.conf do not.
+#
+# Both agents drive this same script, and state is per PANE, so a tab holding
+# one Claude and one codex pane rolls up correctly with no extra work.
 
 set -uo pipefail
+
+# Filter the flag out of the positional args rather than blanking it, so it
+# works in any position. Blanking leaves an empty $1 and the action is lost.
+EMIT_JSON=0
+_args=()
+for _a in "$@"; do
+  if [ "$_a" = "--json" ]; then EMIT_JSON=1; else _args+=("$_a"); fi
+done
+set -- ${_args[@]+"${_args[@]}"}
+emit() { [ "$EMIT_JSON" = 1 ] && printf '{}\n'; return 0; }
+trap emit EXIT
 
 command -v tmux >/dev/null || exit 0
 

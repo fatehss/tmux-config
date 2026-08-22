@@ -34,6 +34,7 @@ session picker. `yazi` and `glow` back the `y` and `g` aliases.
 | `config/yazi/*.toml` | `~/.config/yazi/` |
 | `config/cmux/cmux.json` | `~/.config/cmux/` |
 | `claude/settings.json` | `~/.claude/settings.json` |
+| `codex/hooks.json` | `~/.codex/hooks.json` |
 | `ghostty/config` | macOS: `~/Library/Application Support/com.mitchellh.ghostty/config`<br>Linux: `~/.config/ghostty/config` |
 | `share/tmux-cheatsheet.txt` | `~/.local/share/tmux-cheatsheet.txt` |
 | `bin/*` | `~/.local/bin/` |
@@ -47,6 +48,8 @@ session picker. `yazi` and `glow` back the `y` and `g` aliases.
 | `lc -a` | Same, across every tab |
 | `lcl` | Link a running session to this tab (`-p` picker, `-l` list, `-u` unlink) |
 | `tc` | tmux workspace launcher (`tc 6`, `tc -r`, `tc -k`) |
+| `cx` | codex `--yolo`, pinning the tab name the same way `c` does |
+| `lcx` | List/resume **codex** sessions belonging to this tab (`-a` = all tabs) |
 | `y` | yazi, cd-ing to wherever you exit |
 | `g` / `o` / `vw` | glow / open / json-viewer |
 
@@ -60,6 +63,39 @@ Four Claude Code hooks in `claude/settings.json`:
 | `UserPromptSubmit` | `claude-tmux-alert busy` | Tab turns purple ◐ — Claude is working |
 | `Stop` | `claude-tmux-alert on` | Tab turns green ● — finished, your turn |
 | `Notification` | `claude-tmux-alert on` | Tab turns green ● — needs permission |
+
+### Codex, same wiring
+
+Codex 0.149+ implements Claude Code's hook contract - identical event names,
+identical JSON payload on stdin, and it exports `TMUX_PANE` to the hook
+process. So `codex/hooks.json` points at the *same* scripts and codex gets the
+same purple/green tab behaviour for free:
+
+| Hook | Script | Effect |
+|---|---|---|
+| `SessionStart` | `codex-tag-session` | Records `session_id → tmux window` in `~/.codex/tmux-index.jsonl` |
+| `UserPromptSubmit` | `claude-tmux-alert busy --json` | Tab turns purple ◐ |
+| `Stop` | `claude-tmux-alert on --json` | Tab turns green ● |
+
+Three things differ from Claude and are worth knowing:
+
+* **Separate index.** Codex sessions go in `~/.codex/tmux-index.jsonl`, not
+  Claude's. One shared index would let `lc` hand a codex id to
+  `claude --resume`, which cannot resume it.
+* **`--json`.** Codex rejects an empty response on `SessionStart`/`Stop`
+  where Claude accepts one, so those commands pass `--json` and the scripts
+  print `{}`.
+* **Resume fires no hook.** `codex resume` does not fire `SessionStart`, so
+  `lcx` re-tags the session itself via `codex-tab-relink` before resuming.
+  Claude gets this for free from its own hook.
+
+Codex asks you to trust hooks the first time it sees them, and again after
+any edit to `hooks.json`; answer *Trust all and continue*. The hash lands in
+`~/.codex/config.toml` under `[hooks.state]`.
+
+`hooks.json` must be strict JSON with no extra keys - a `_comment` key at the
+top level makes codex discard the whole file *silently*, with no error and no
+hooks.
 
 ### Tab colours
 
@@ -75,7 +111,8 @@ actually needs you. Cyan (10.0:1) was rejected for inverting that hierarchy.
 ### Several sessions in one tab
 
 State is stored per **pane** in `@claude_state`, and the tab colour is a
-rollup of all its panes:
+rollup of all its panes. Both agents write the same pane option, so a tab
+holding one Claude and one codex pane rolls up correctly with no extra work:
 
 | Panes | Tab |
 |---|---|

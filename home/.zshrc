@@ -16,7 +16,47 @@ export PATH="/Applications/Cursor.app/Contents/Resources/app/bin:$PATH"
 # Open Microsoft Visual Studio Code (the Cursor PATH above hijacks `code`)
 alias code='"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"'
 
-alias cx='codex --yolo'
+# ─── Codex, wired into the same tmux tab machinery as Claude ──────────
+# `cx`  launch codex, pinning the tmux window name (same trick as `c`)
+# `lcx` list/resume codex sessions belonging to THIS tab  (lcx -a = all tabs)
+#
+# Codex 0.149+ runs Claude Code's hook contract, so ~/.codex/hooks.json points
+# at the same scripts: the tab goes purple while codex works and green when it
+# wants you, and a tab holding both agents rolls up correctly because state is
+# stored per pane. The tab<->session link is recorded by the SessionStart hook
+# ~/.local/bin/codex-tag-session into ~/.codex/tmux-index.jsonl - a separate
+# index from Claude's, because the two resume by different commands.
+
+cx() {
+  if [ -n "$TMUX" ] && \
+     [ "$(tmux show-window-options -v automatic-rename 2>/dev/null)" != "off" ]; then
+    local root label
+    root="$(git rev-parse --show-toplevel 2>/dev/null)"
+    label="$(basename "${root:-$PWD}")"
+    tmux set-window-option automatic-rename off >/dev/null 2>&1
+    tmux rename-window "$label" >/dev/null 2>&1
+  fi
+  command codex --yolo "$@"
+}
+
+lcx() {
+  local arg=""
+  case "${1:-}" in -a|--all) arg="--all" ;; esac
+
+  local out
+  out="$(command codex-tab-pick $arg)" || return
+  [ -n "$out" ] || return
+
+  local dir="${out%%$'\t'*}" sid="${out##*$'\t'}"
+  [ -d "$dir" ] || { print -u2 "lcx: directory gone: $dir"; return 1; }
+
+  builtin cd -- "$dir" || return
+  # codex fires no hook on resume, so the tab<->session link is re-recorded
+  # here instead. Without it, resuming in another tab leaves the session
+  # listed under the tab it started in.
+  command codex-tab-relink "$sid"
+  command codex resume "$sid"
+}
 
 # ─── Claude sessions linked to tmux tabs ─────────────────────
 # `c`  launch Claude, pinning the tmux window name so the tab stays stable

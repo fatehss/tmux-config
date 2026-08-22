@@ -57,6 +57,12 @@
     lcl -p           pick which session to link (fzf picker)
     lcl -l           list what's linked to this tab
 
+  CODEX
+    cx               launch codex --yolo, pinning this tab's name
+    lcx              list/resume codex sessions belonging to THIS tab
+    lcx -a           same, across every tab
+                     (tab colours work the same for codex as for claude)
+
   WORKSPACE
     tc               new/reattach session "claude" (single pane)
     tc 6             session with a tiled 6-pane "work" window
@@ -78,6 +84,8 @@
   TAB / PANE COLORS
     dim grey         idle
     purple  ◐        Claude is working
-    green   ●        Claude wants you (finished, or needs permission)
+    green   ●        agent wants you (finished, or needs permission)
+                     both claude and codex drive these; state is per pane,
+                     so a tab with one of each rolls up correctly
 
   Press q to close this cheatsheet.  Switch back: Ctrl+a n

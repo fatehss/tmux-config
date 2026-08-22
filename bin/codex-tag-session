@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# SessionStart hook for Codex: record which tmux window a codex session
+# belongs to.
+#
+# Codex 0.149+ implements Claude Code's hook contract - same event names,
+# same JSON payload on stdin (session_id, transcript_path, cwd, source) -
+# and it exports TMUX_PANE to the hook process. So the tagging logic is
+# identical to Claude's and this is a thin wrapper rather than a copy.
+#
+# Two things differ:
+#   * the index is ~/.codex/tmux-index.jsonl, kept separate because the two
+#     agents resume by different commands. One shared index would let `lc`
+#     hand a codex id to `claude --resume`, which cannot resume it.
+#   * codex rejects an empty hook response ("hook returned invalid session
+#     start JSON output") where Claude accepts one, hence --json.
+
+set -uo pipefail
+
+INDEX="${CODEX_TMUX_INDEX:-$HOME/.codex/tmux-index.jsonl}"
+
+exec env CLAUDE_TMUX_INDEX="$INDEX" \
+  "$(dirname "$0")/claude-tag-session" --json

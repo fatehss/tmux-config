@@ -63,9 +63,21 @@ win_name="${meta#*<|>}"
 server_pid="$(tmux display-message -p '#{pid}' 2>/dev/null)"
 
 # ── transcript path for a session id ──────────────────────────────────
+# Falls back to whatever the index already recorded. Claude transcripts live
+# under ~/.claude/projects and are found by the glob; codex rollouts live
+# under ~/.codex/sessions with a timestamped filename that no glob on the
+# session id can find. The index stored the path at tag time, so use it -
+# that is what makes --renamed work for codex sessions too.
 transcript_of() {
   local sid="$1" f
   f="$(ls -1 "$PROJECTS"/*/"$sid".jsonl 2>/dev/null | head -1)"
+  if [ -z "$f" ] && [ -s "$INDEX" ]; then
+    f="$(jq -rs --arg sid "$sid" '
+          map(select(.session_id == $sid and (.transcript // "") != ""))
+          | if length == 0 then empty else (max_by(.ts) | .transcript) end
+        ' "$INDEX" 2>/dev/null)"
+    [ -f "$f" ] || f=""
+  fi
   printf '%s' "$f"
 }
 
@@ -82,6 +94,13 @@ title_of() {
 cwd_of() {
   local sid="$1" t="$2" c
   c="$(grep -h -m1 '"cwd":' "$t" 2>/dev/null | jq -r '.cwd // empty' 2>/dev/null)"
+  # Codex nests cwd under .payload in its session_meta record, so the line
+  # grep finds parses to null above; and `claude agents` knows nothing about
+  # codex sessions. The index recorded cwd at tag time either way.
+  [ -n "$c" ] || c="$(jq -rs --arg sid "$sid" '
+        map(select(.session_id == $sid and (.cwd // "") != ""))
+        | if length == 0 then empty else (max_by(.ts) | .cwd) end
+      ' "$INDEX" 2>/dev/null)"
   [ -n "$c" ] || c="$(claude agents --json 2>/dev/null \
         | jq -r --arg s "$sid" '.[]|select(.sessionId==$s)|.cwd' 2>/dev/null | head -1)"
   printf '%s' "$c"

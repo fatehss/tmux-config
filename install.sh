@@ -36,12 +36,16 @@ MANIFEST=(
   "config/yazi/theme.toml|$HOME/.config/yazi/theme.toml"
   "config/cmux/cmux.json|$HOME/.config/cmux/cmux.json"
   "claude/settings.json|$HOME/.claude/settings.json"
+  "codex/hooks.json|$HOME/.codex/hooks.json"
   "ghostty/config|$GHOSTTY"
   "share/tmux-cheatsheet.txt|$HOME/.local/share/tmux-cheatsheet.txt"
   "bin/claude-tag-session|$HOME/.local/bin/claude-tag-session"
   "bin/claude-tab-pick|$HOME/.local/bin/claude-tab-pick"
   "bin/claude-tab-link|$HOME/.local/bin/claude-tab-link"
   "bin/claude-tmux-alert|$HOME/.local/bin/claude-tmux-alert"
+  "bin/codex-tag-session|$HOME/.local/bin/codex-tag-session"
+  "bin/codex-tab-pick|$HOME/.local/bin/codex-tab-pick"
+  "bin/codex-tab-relink|$HOME/.local/bin/codex-tab-relink"
   "bin/tmux-claude|$HOME/.local/bin/tmux-claude"
 )
 
