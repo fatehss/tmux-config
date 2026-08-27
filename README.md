@@ -33,7 +33,7 @@ session picker. `yazi` and `glow` back the `y` and `g` aliases.
 | `home/.tmux.conf` | `~/.tmux.conf` |
 | `config/yazi/*.toml` | `~/.config/yazi/` |
 | `config/cmux/cmux.json` | `~/.config/cmux/` |
-| `claude/settings.json` | `~/.claude/settings.json` |
+| `claude/settings.json` (untracked — see [Not tracked](#not-tracked)) | `~/.claude/settings.json` |
 | `codex/hooks.json` | `~/.codex/hooks.json` |
 | `ghostty/config` | macOS: `~/Library/Application Support/com.mitchellh.ghostty/config`<br>Linux: `~/.config/ghostty/config` |
 | `share/tmux-cheatsheet.txt` | `~/.local/share/tmux-cheatsheet.txt` |
@@ -199,12 +199,16 @@ directory colour is overridden to teal for the same reason.
 
 ## Not tracked
 
-Two files are deliberately excluded so this repo stays publishable:
+Three files are deliberately excluded so this repo stays publishable:
 
 | File | Why | Template |
 |---|---|---|
 | `~/.claude/CLAUDE.md` | Names clients and colleagues | `claude/CLAUDE.md.template` |
+| `~/.claude/settings.json` | Claude Code rewrites it in place; accumulates internal marketplaces and absolute paths | `claude/settings.json.template` |
 | `~/.zshrc.local` | Client paths, local proxies, absolute paths | `home/.zshrc.local.template` |
+
+On a fresh machine, seed the settings file before running `install.sh`:
+`cp claude/settings.json.template claude/settings.json`
 
 `.zshrc` sources `~/.zshrc.local` last if it exists, so machine-local settings
 override anything tracked. Anything that hardcodes `/Users/<you>` or names a
