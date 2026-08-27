@@ -51,7 +51,9 @@ keybind = shift+enter=text:\n\r
 
 desktop-notifications = true
 
-cursor-style = block
+cursor-style = bar
+cursor-style-blink = true
+adjust-cursor-thickness = 100%
 
 # Move cursor to mouse position on click
 # macOS: Option + Click | Linux: Alt + Click
@@ -64,18 +66,17 @@ macos-titlebar-style = tabs
 
 scrollback-limit = 500000000
 
-# ── Homebrew (red) ────────────────────────────────────────────────
-# Terminal.app's Homebrew profile with the hue rotated green -> red.
-# Pure red at Homebrew's saturation (#FE1414) only reaches 5.3:1 on black
-# and fringes badly, so this desaturates to coral: 7.5:1, still clearly red.
+# ── Homebrew (green) ───────────────────────────────────────────────
+# Terminal.app's Homebrew profile, hue rotated back to green.
+# Same lightness/saturation as the coral it replaced: 7.5:1 on black.
 # Accents use red's complement (cyan) so selection stays legible.
 background = #000000
-foreground = #FF6B5C
+foreground = #5CFF6B
 
 # Homebrew leaves bold the same color as normal text, which is
 # Ghostty's default - no `bold-color` needed.
-cursor-color = #FF6B5C
-cursor-text = #1A0806
+cursor-color = #5CFF6B
+cursor-text = #061A08
 
 selection-background = #16505C
 selection-foreground = #FFFFFF
