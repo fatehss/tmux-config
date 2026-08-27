@@ -6,6 +6,11 @@
 # Keep the real file at ~/.claude/CLAUDE.md only. See claude/CLAUDE.md.template.
 claude/CLAUDE.md
 
+# Never track: Claude Code rewrites this in place (it is symlinked here), and
+# it accumulates internal marketplaces and absolute local paths.
+# See claude/settings.json.template for the shareable baseline.
+claude/settings.json
+
 # Local-only credentials referenced by .zshrc at runtime
 .cli-proxy-api/
 
