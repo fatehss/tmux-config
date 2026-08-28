@@ -36,7 +36,10 @@ cx() {
     tmux set-window-option automatic-rename off >/dev/null 2>&1
     tmux rename-window "$label" >/dev/null 2>&1
   fi
-  command codex --yolo "$@"
+  command codex --dangerously-bypass-approvals-and-sandbox \
+    -m gpt-5.6-sol \
+    -c model_context_window=1000000 \
+    -c model_auto_compact_token_limit=900000 "$@"
 }
 
 lcx() {
